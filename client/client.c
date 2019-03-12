@@ -1,6 +1,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/socket.h>
+#include "sys/time.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,6 +40,8 @@ bool hostname_to_ip(char* hostname, char* ip, uint16_t ip_len)
 
 int main(int argc, char** argv)
 {
+    (void)argc;	/* suppress warning */
+    (void)argv;	/* suppress warning */
     // Initialize request message.
     init_rq(PARTNER_ID,
             AES_KEY,
@@ -117,7 +120,7 @@ int main(int argc, char** argv)
     /* send data to the server */
     rc = send(sockfd, buf, (size_t) len, 0);
 
-    if (rc != len)
+    if (rc != (int32_t)len)
     {
         close(sockfd);
         printf("send() sent a different number of bytes (%d) from expected\n", rc);
