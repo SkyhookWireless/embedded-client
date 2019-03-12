@@ -1,4 +1,4 @@
-CFLAGS = -Wall -Werror -Wextra -Wno-override-init -Os -std=c99
+CFLAGS = -Wall -Werror -Os -std=c99
 CFLAGS += -DCRYPTO_ENABLED # Currently a no-op.
 BIN_DIR = bin
 SKY_PROTO_DIR = protocol
