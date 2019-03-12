@@ -1,4 +1,4 @@
-CFLAGS = -Wall -Werror -Os
+CFLAGS = -Wall -Werror -Wextra -Wno-override-init -Os -std=c99
 CFLAGS += -DCRYPTO_ENABLED # Currently a no-op.
 BIN_DIR = bin
 SKY_PROTO_DIR = protocol
@@ -17,9 +17,8 @@ aeslib: ${AES_DIR}/aes.c ${AES_DIR}/aes.h
 	make -C ${AES_DIR} aes.a
 
 client: skylib ${BIN_DIR}/client.o aeslib
-	$(CC) -lc -o ${BIN_DIR}/client ${BIN_DIR}/skylib.a \
-	${AES_DIR}/aes.a \
-	${BIN_DIR}/client.o
+	$(CC) -lc -o ${BIN_DIR}/client \
+	${BIN_DIR}/client.o ${BIN_DIR}/skylib.a ${AES_DIR}/aes.a
 
 ${BIN_DIR}/skylib.a: proto ${PROTO_OBJS}
 	ar rcs $@ ${PROTO_OBJS}
