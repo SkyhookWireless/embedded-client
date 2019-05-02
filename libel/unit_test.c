@@ -238,7 +238,7 @@ int main(int ac, char **av)
         b[i].ap.type = SKY_BEACON_AP;
         set_mac(b[i].ap.mac);
         b[i].ap.freq = b[i].ap.mac[0];
-        b[i].ap.rssi = -rand() % 128;
+        b[i].ap.rssi = -10 + -rand() % 118;
     }
 
     for (i = 0; i < 25; i++) {
