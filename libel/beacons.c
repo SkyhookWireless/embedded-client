@@ -140,45 +140,68 @@ static Sky_status_t insert_beacon(
  *
  *  @return sky_status_t SKY_SUCCESS (if code is SKY_ERROR_NONE) or SKY_ERROR
  */
+#define RSSI_SCORE(rssi, band) ((fabs((int)(rssi / band) * band - rssi)))
+#define RSSI(idx, beacon) (beacon[idx].ap.rssi - beacon[0].ap.rssi)
 static Sky_status_t filter_by_rssi(Sky_ctx_t *ctx)
 {
     int i, reject;
     float band_range, worst;
-    float ideal_rssi[MAX_AP_BEACONS + 1];
+    float rssi_score[MAX_AP_BEACONS + 1];
+    uint16_t rssi_band[MAX_AP_BEACONS + 1] = { 0 };
+    uint16_t rssi_cluster[MAX_AP_BEACONS + 1] = { 0 };
 
-    if (ctx->ap_len < MAX_AP_BEACONS)
-        return SKY_ERROR;
+    /* what share of the range of rssi values does each beacon represent */
+    band_range = RSSI(ctx->ap_len - 1, ctx->beacon) / ((float)ctx->ap_len - 1);
 
     /* if the rssi range is small, throw away middle beacon */
-    if (ctx->beacon[ctx->ap_len - 1].ap.rssi - ctx->beacon[0].ap.rssi <
-        ctx->ap_len) {
+    if (band_range < 0.5) {
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
             "Warning: rssi range is small. Discarding one beacon...")
         return remove_beacon(ctx, ctx->ap_len / 2);
     }
 
-    /* what share of the range of rssi values does each beacon represent */
-    band_range =
-        (ctx->beacon[ctx->ap_len - 1].ap.rssi - ctx->beacon[0].ap.rssi) /
-        ((float)ctx->ap_len - 1);
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "range: %d band range: %.2f",
+        RSSI(ctx->ap_len - 1, ctx->beacon), band_range)
 
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "range: %d band: %.2f",
-        (ctx->beacon[ctx->ap_len - 1].ap.rssi - ctx->beacon[0].ap.rssi),
-        band_range)
-    /* for each beacon, work out it's ideal rssi value to give an even distribution */
-    for (i = 0; i < ctx->ap_len; i++)
-        ideal_rssi[i] = ctx->beacon[0].ap.rssi + (i * band_range);
+    /* score beacons */
+    for (i = 1; i < ctx->ap_len - 1; i++) {
+        rssi_band[i] = (int)(RSSI(i, ctx->beacon) / band_range);
+        rssi_cluster[rssi_band[i]]++;
+        rssi_score[i] = RSSI_SCORE(RSSI(i, ctx->beacon), band_range);
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
+            "beacon: %d rssi: %d band: %d(%d) score: %.2f", i,
+            ctx->beacon[i].ap.rssi,
+            (int)(ctx->beacon[0].ap.rssi + (rssi_band[i] * band_range)),
+            rssi_band[i], rssi_score[i]);
+    }
+    /* update score based on clusters */
+    for (i = 1; i < ctx->ap_len - 1; i++) {
+        if (rssi_cluster[rssi_band[i]] > 1)
+            rssi_score[i] +=
+                (int)((rssi_cluster[rssi_band[i]] - 1) * band_range);
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
+            "beacon: %d rssi: %d cluster: %d(%d) new score: %.2f", i,
+            ctx->beacon[i].ap.rssi, rssi_band[i], rssi_cluster[rssi_band[i]],
+            rssi_score[i]);
+    }
 
     /* find AP with poorest fit to ideal rssi */
     /* always keep lowest and highest rssi */
-    for (i = 1, reject = ctx->ap_len / 2, worst = 0; i < ctx->ap_len - 2; i++) {
-        if (fabs(ctx->beacon[i].ap.rssi - ideal_rssi[i]) > worst) {
-            worst = fabs(ctx->beacon[i].ap.rssi - ideal_rssi[i]);
+    for (i = 1, reject = ctx->ap_len / 2, worst = 0; i < ctx->ap_len - 1; i++) {
+        if (rssi_score[i] > worst) {
+            worst = rssi_score[i];
             reject = i;
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                "reject: %d, ideal %.2f worst %.2f", i, ideal_rssi[i], worst)
+                "candidate: %d, rssi %d worst %.2f", i, ctx->beacon[i].ap.rssi,
+                worst)
+        } else {
+            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
+                "         : %d, rssi %d worst %.2f", i, ctx->beacon[i].ap.rssi,
+                worst)
         }
     }
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "reject: %d, rssi %d worst %.2f", reject,
+        ctx->beacon[reject].ap.rssi, worst)
     return remove_beacon(ctx, reject);
 }
 
@@ -196,11 +219,6 @@ static Sky_status_t filter_virtual_aps(Sky_ctx_t *ctx)
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "ap_len: %d of %d APs", (int)ctx->ap_len,
         (int)ctx->len)
     dump_workspace(ctx);
-
-    if (ctx->ap_len < MAX_AP_BEACONS) {
-        LOGFMT(ctx, SKY_LOG_LEVEL_CRITICAL, "too many WiFi beacons")
-        return SKY_ERROR;
-    }
 
     /* look for any AP beacon that is 'similar' to another */
     if (ctx->beacon[0].h.type != SKY_BEACON_AP) {
