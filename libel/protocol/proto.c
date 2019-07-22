@@ -331,9 +331,8 @@ int32_t serialize_request(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, uint32
     int32_t bytes_written;
     struct AES_ctx aes_ctx;
 
-    RqHeader rq_hdr;
-
-    CryptoInfo rq_crypto_info;
+    RqHeader rq_hdr = RqHeader_init_default;
+    CryptoInfo rq_crypto_info = CryptoInfo_init_default;
 
     Rq rq;
 
