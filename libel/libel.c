@@ -25,7 +25,7 @@
 #include "libel.h"
 #include "proto.h"
 
-#define SW_VERSION 0
+#define SW_VERSION 1
 
 /*! \brief keep track of when the user has opened the library */
 static uint32_t sky_open_flag = 0;
