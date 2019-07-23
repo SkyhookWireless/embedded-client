@@ -25,6 +25,11 @@
 #include "libel.h"
 #include "proto.h"
 
+/* A monotonically increasing version number intended to track the client
+ * software version, and which is sent to the server in each request. Clumsier
+ * than just including the Git version string (since it will need to be updated
+ * manually for every release) but cheaper bandwidth-wise.
+ */
 #define SW_VERSION 1
 
 /*! \brief keep track of when the user has opened the library */
