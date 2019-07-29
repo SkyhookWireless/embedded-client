@@ -17,7 +17,7 @@ static char *itoa_simple_helper(char *dest, int i) {
   if (i <= -10) {
     dest = itoa_simple_helper(dest, i/10);
   }
-  // my_printf("itoa: %c\n", '0' - i%10);
+  // printf("itoa: %c\n", '0' - i%10);
   *dest++ = '0' - i%10;
   return dest;
 }
@@ -71,7 +71,6 @@ int send_request(
         return -1;
     }
 
-#if 1
     // Init server address struct and set ip and port.
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(port);
@@ -108,12 +107,15 @@ int send_request(
     }
 
     // Read response.
-    rc = recv(sockfd, response, resp_size, MSG_DONTWAIT /* MSG_WAITALL */);
+    for (int i = 0; i < 10; i++) {
+        usleep(500);
+        rc = recv(sockfd, response, resp_size, MSG_DONTWAIT /* MSG_WAITALL */);
+        if (rc >= 0)
+            break;
+    }
     if (rc < 0) {
         printf("Error: unable to receive response\n");
         return -1;
     }
     return (int)rc;
-#endif
-    return -1;
 }
