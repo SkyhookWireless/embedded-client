@@ -31,34 +31,10 @@
 #include "send.h"
 #include "config.h"
 
+extern void initialise_monitor_handles(void);
+
 
 #define SCAN_LIST_SIZE 5
-void print_to_console(const char* msg)
-{
-    // TODO
-}
-
-int my_printf(const char *format, ...)
-{
-    va_list arg;
-    char buf[1024];
-    int done;
-    char *s = buf;
-
-    va_start (arg, format);
-    done = vsnprintf (buf, sizeof(buf), format, arg);
-    while (*s != '\0') {
-        if (*s == '\n' && s[-1] != '\r') {
-            memmove(s + 1, s, strlen(s) + 1);
-            *s = '\r';
-            s++;
-        }
-        s++;
-    }
-    print_to_console(buf);
-    va_end (arg);
-    return done;
-}
 
 /* scan list definitions (platform dependant) */
 struct ap_scan {
@@ -167,6 +143,7 @@ int rand_bytes(uint8_t *rand_buf, uint32_t bufsize)
     return bufsize;
 }
 
+
 /*! \brief logging function
  *
  *  @param level log level of this message
@@ -208,7 +185,7 @@ static time_t mytime(time_t *t)
  *
  *  @returns 0 for success or negative number for error
  */
-int sample_client(void)
+int sample_client(int argc, char **argv)
 {
     int i;
     Sky_errno_t sky_errno = -1;
@@ -226,9 +203,13 @@ int sample_client(void)
     void *nv_space = NULL;
     char *configfile = NULL;
 
+    initialise_monitor_handles();
     Config_t config;
     int ret_code = 0;
-    configfile = "sample_client.conf";
+    if (argc > 1)
+        configfile = argv[1];
+    else
+        configfile = "sample_client.conf";
 
     bsd_initialize(NULL, NULL, NULL, NULL, NULL);
 
@@ -239,7 +220,7 @@ int sample_client(void)
     // print_config(&config);
 
     /* Comment in order to disable cache loading */
-    nv_space = nv_cache(nv_space, 1);
+    // nv_space = nv_cache(nv_space, 1);
 
     timestamp = mytime(NULL); /* time scans were prepared */
     /* Initialize the Skyhook resources */
@@ -415,8 +396,8 @@ int sample_client(void)
     if (ret_status != SKY_SUCCESS)
         printf("sky_close sky_errno contains '%s'\n", sky_perror(sky_errno));
 
-    if (pstate != NULL)
-        nv_cache_save(pstate, 1);
+    // if (pstate != NULL)
+    //     nv_cache_save(pstate, 1);
 
     printf("Done.\n\n");
     return 0;
