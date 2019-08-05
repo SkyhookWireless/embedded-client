@@ -245,7 +245,7 @@ Sky_status_t sky_add_ap_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uint8_t m
     if (!validate_workspace(ctx))
         return sky_return(sky_errno, SKY_ERROR_BAD_WORKSPACE);
 
-    if (!validate_mac(mac))
+    if (!validate_mac(mac, ctx))
         return sky_return(sky_errno, SKY_ERROR_BAD_PARAMETERS);
 
     /* Create AP beacon */
