@@ -124,6 +124,22 @@ int validate_cache(Sky_cache_t *c, Sky_loggerfn_t logf)
     return true;
 }
 
+/*! \brief validate mac address
+ *
+ *  @param c pointer to mac address
+ *
+ *  @return true if mac address not all zeros or ones
+ */
+int validate_mac(uint8_t mac[6])
+{
+    if (mac[0] == 0 || mac[0] == 0xff) {
+        if (mac[0] == mac[1] && mac[0] == mac[2] && mac[0] == mac[3] && mac[0] == mac[4] &&
+            mac[0] == mac[5])
+            return false;
+    }
+    return true;
+}
+
 #if SKY_DEBUG
 /*! \brief basename return pointer to the basename of path or path
  *
