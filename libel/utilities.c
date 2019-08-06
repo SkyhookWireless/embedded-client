@@ -124,23 +124,6 @@ int validate_cache(Sky_cache_t *c, Sky_loggerfn_t logf)
     return true;
 }
 
-/*! \brief compare mac address
- *
- *  @param maca pointer to mac address
- *  @param macb pointer to mac address
- *
- *  @return true if mac address not all zeros or ones
- */
-int cmp_mac(uint8_t maca[6], uint8_t macb[6])
-{
-    int i;
-
-    for (i = 0; i < MAC_SIZE; i++)
-        if (maca[i] != macb[i])
-            return false;
-    return true;
-}
-
 /*! \brief validate mac address
  *
  *  @param mac pointer to mac address
@@ -164,7 +147,7 @@ int validate_mac(uint8_t mac[6], Sky_ctx_t *ctx)
     for (i = 0; i < ctx->len; i++) {
         if (mac == ctx->beacon[i].ap.mac)
             continue;
-        if (cmp_mac(mac, ctx->beacon[i].ap.mac)) {
+        if (memcmp(mac, ctx->beacon[i].ap.mac, MAC_SIZE) == 0) {
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Beacon with duplicate mac address");
             return false;
         }
