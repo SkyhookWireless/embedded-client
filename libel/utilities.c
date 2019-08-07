@@ -282,10 +282,10 @@ void dump_cache(Sky_ctx_t *ctx)
 
     for (i = 0; i < CACHE_SIZE; i++) {
         c = &ctx->cache->cacheline[i];
-        if (c->len == 0 || c->time == 0)
+        if (c->len == 0 || c->time == 0) {
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d of %d - empty len:%d ap_len:%d time:%u", i,
                 ctx->cache->len, c->len, c->ap_len, c->time)
-        else {
+        } else {
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d of %d%s GPS:%d.%06d,%d.%06d,%d", i,
                 ctx->cache->len, ctx->cache->newest == &ctx->cache->cacheline[i] ? "<-newest" : "",
                 (int)c->loc.lat, (int)fabs(round(1000000 * (c->loc.lat - (int)c->loc.lat))),

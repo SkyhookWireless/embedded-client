@@ -103,7 +103,6 @@ Sky_status_t sky_open(Sky_errno_t *sky_errno, uint8_t *device_id, uint32_t id_le
     } else if (sky_state)
         cache = *sky_state;
     else {
-        cache.newest = NULL;
         cache.header.magic = SKY_MAGIC;
         cache.header.size = sizeof(cache);
         cache.header.time = (uint32_t)(*sky_time)(NULL);
@@ -118,6 +117,13 @@ Sky_status_t sky_open(Sky_errno_t *sky_errno, uint8_t *device_id, uint32_t id_le
                 cache.cacheline[i].beacon[j].h.type = SKY_BEACON_MAX;
             }
         }
+    }
+    /* initialize cache.newest */
+    cache.newest = &cache.cacheline[0];
+    for (i = 1; i < CACHE_SIZE; i++) {
+        if (cache.cacheline[i].time != (uint32_t)(*sky_time)(NULL) &&
+            cache.newest->time < cache.cacheline[i].time)
+            cache.newest = &cache.cacheline[i];
     }
 
     /* Sanity check */

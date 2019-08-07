@@ -186,7 +186,7 @@ static Sky_status_t filter_by_rssi(Sky_ctx_t *ctx)
         else
             reject = 0; /* Throw away lowest rssi value */
     }
-    for (i = 0; i < ctx->ap_len; i++)
+    for (i = 0; i < ctx->ap_len; i++) {
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "%s: %-2d, %s ideal %d.%02d fit %2d.%02d (%d)",
             (reject == i) ? "remove" : "      ", i,
             ctx->beacon[i].ap.in_cache ? "cached" : "      ", (int)ideal_rssi[i],
@@ -195,6 +195,7 @@ static Sky_status_t filter_by_rssi(Sky_ctx_t *ctx)
             (int)fabs(round(100 * (fabs(ctx->beacon[i].ap.rssi - ideal_rssi[i]) -
                                       (int)fabs(ctx->beacon[i].ap.rssi - ideal_rssi[i])))),
             ctx->beacon[i].ap.rssi)
+    }
     return remove_beacon(ctx, reject);
 }
 
@@ -268,11 +269,14 @@ Sky_status_t add_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon_t *b, boo
     if (is_connected)
         ctx->connected = i;
 
-    /* done if no filtering needed */
-    if (b->h.type != SKY_BEACON_AP || ctx->ap_len <= MAX_AP_BEACONS)
+    if (b->h.type == SKY_BEACON_AP)
+        ctx->beacon[i].ap.in_cache = beacon_in_cache(ctx, b, ctx->cache->newest);
+    else /* only filter APs */
         return sky_return(sky_errno, SKY_ERROR_NONE);
 
-    ctx->beacon[i].ap.in_cache = beacon_in_cache(ctx, b, ctx->cache->newest);
+    /* done if no filtering needed */
+    if (ctx->ap_len <= MAX_AP_BEACONS)
+        return sky_return(sky_errno, SKY_ERROR_NONE);
 
     /* beacon is AP and is subject to filtering */
     if (filter_virtual_aps(ctx) == SKY_ERROR)
