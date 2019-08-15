@@ -23,6 +23,10 @@
 #ifndef SKY_LIBEL_H
 #define SKY_LIBEL_H
 
+#define SKY_MAX_BEACONS 255
+#define SKY_MAX_CACHELINES 128
+#define MAX_CLIENTCONFIG_SIZE 100
+
 #define MAC_SIZE 6
 #define AES_SIZE 16
 
@@ -97,6 +101,7 @@ typedef enum {
     SKY_ERROR_GET_CACHE,
     SKY_ERROR_LOCATION_UNKNOWN,
     SKY_ERROR_SERVER_ERROR,
+    SKY_ERROR_NEW_CONFIG,
     SKY_ERROR_MAX
 } Sky_errno_t;
 
@@ -122,6 +127,10 @@ typedef int (*Sky_randfn_t)(uint8_t *rand_buf, uint32_t bufsize);
  */
 typedef time_t (*Sky_timefn_t)(time_t *t);
 
+/*! \brief pointer to gettime callback function
+ */
+typedef void *(*Sky_mallocfn_t)(size_t size);
+
 #ifndef SKY_LIBEL
 typedef void Sky_ctx_t;
 #else
@@ -134,7 +143,8 @@ typedef void Sky_ctx_t;
 
 Sky_status_t sky_open(Sky_errno_t *sky_errno, uint8_t *device_id, uint32_t id_len,
     uint32_t partner_id, uint32_t aes_key_id, uint8_t aes_key[16], void *state_buf,
-    Sky_log_level_t min_level, Sky_loggerfn_t logf, Sky_randfn_t rand_bytes, Sky_timefn_t gettime);
+    Sky_log_level_t min_level, Sky_loggerfn_t logf, Sky_randfn_t rand_bytes, Sky_timefn_t gettime,
+    Sky_mallocfn_t malloc);
 
 int32_t sky_sizeof_state(void *sky_state);
 

@@ -321,11 +321,12 @@ bool Rq_callback(pb_istream_t *istream, pb_ostream_t *ostream, const pb_field_t 
 
 int32_t get_maximum_response_size(void)
 {
-    return RsHeader_size + CryptoInfo_size + 1 +
+    return RsHeader_size + CryptoInfo_size + 1 + MAX_CLIENTCONFIG_SIZE +
            AES_BLOCKLEN * ((Rs_size + AES_BLOCKLEN - 1) / AES_BLOCKLEN);
 }
 
-int32_t serialize_request(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, uint32_t sw_version)
+int32_t serialize_request(
+    Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, uint32_t sw_version, bool config)
 {
     size_t rq_size, aes_padding_length, crypto_info_size, hdr_size, total_length;
     int32_t bytes_written;
@@ -373,6 +374,7 @@ int32_t serialize_request(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, uint32
     rq_hdr.crypto_info_length = crypto_info_size;
     rq_hdr.rq_length = rq_size;
     rq_hdr.sw_version = sw_version;
+    rq_hdr.request_client_conf = config ? 1 : 0;
 
     // First byte of message on wire is the length (in bytes) of the request
     // header.
@@ -502,6 +504,7 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
             loc->hpe = (uint16_t)rs.hpe;
             loc->location_source = (Sky_loc_source_t)rs.source;
         }
+        config_overrides(ctx, &rs);
     } else {
         loc->lat = 0;
         loc->lon = 0;
@@ -530,4 +533,43 @@ static int64_t get_gnss_alt_scaled(Sky_ctx_t *ctx, uint32_t idx)
 static int64_t get_gnss_speed_scaled(Sky_ctx_t *ctx, uint32_t idx)
 {
     return get_gnss_speed(ctx, idx) * 10;
+}
+
+/*! \brief field extraction for dynamic use of Nanopb (ctx partner_id)
+ *
+ *  @param ctx workspace buffer
+ *
+ *  @return partner_id
+ */
+void config_overrides(Sky_ctx_t *ctx, Rs *rs)
+{
+    if (rs->config.cache_size != 0)
+        CONFIG(ctx->cache, cache_size) = rs->config.cache_size;
+    else
+        CONFIG(ctx->cache, cache_size) = CACHE_SIZE;
+    if (rs->config.total_beacons != 0)
+        CONFIG(ctx->cache, total_beacons) = rs->config.total_beacons;
+    else
+        CONFIG(ctx->cache, total_beacons) = TOTAL_BEACONS;
+    if (rs->config.max_ap_beacons != 0)
+        CONFIG(ctx->cache, max_ap_beacons) = rs->config.max_ap_beacons;
+    else
+        CONFIG(ctx->cache, max_ap_beacons) = MAX_AP_BEACONS;
+    if (rs->config.cache_match_threshold != 0)
+        CONFIG(ctx->cache, cache_match_threshold) = rs->config.cache_match_threshold;
+    else
+        CONFIG(ctx->cache, cache_match_threshold) = CACHE_MATCH_THRESHOLD;
+    if (rs->config.cache_age_threshold != 0)
+        CONFIG(ctx->cache, cache_age_threshold) = rs->config.cache_age_threshold;
+    else
+        CONFIG(ctx->cache, cache_age_threshold) = CACHE_AGE_THRESHOLD;
+    if (rs->config.cache_beacon_threshold != 0)
+        CONFIG(ctx->cache, cache_beacon_threshold) = rs->config.cache_beacon_threshold;
+    else
+        CONFIG(ctx->cache, cache_beacon_threshold) = CACHE_BEACON_THRESHOLD;
+    if (rs->config.cache_neg_rssi_threshold != 0)
+        CONFIG(ctx->cache, cache_neg_rssi_threshold) = rs->config.cache_neg_rssi_threshold;
+    else
+        CONFIG(ctx->cache, cache_neg_rssi_threshold) = CACHE_RSSI_THRESHOLD;
+    /* Add new config parameters here */
 }

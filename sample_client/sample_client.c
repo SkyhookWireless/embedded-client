@@ -76,6 +76,7 @@ void *nv_cache(void *nv_space, uint16_t client_id)
     if ((fio = fopen(cache_name, "r")) != NULL) {
         if (fread((void *)&tmp, sizeof(tmp), 1, fio) == 1 &&
             tmp.crc32 == sky_crc32(&tmp.magic, (uint8_t *)&tmp.crc32 - (uint8_t *)&tmp.magic)) {
+            printf("nv_cache: cache size %d\n", tmp.size);
             nv_space = malloc(tmp.size);
             rewind(fio);
             if (fread(nv_space, tmp.size, 1, fio) == 1)
@@ -216,7 +217,8 @@ int main(int argc, char *argv[])
     timestamp = mytime(NULL); /* time scans were prepared */
     /* Initialize the Skyhook resources */
     if (sky_open(&sky_errno, config.device_mac, MAC_SIZE, config.partner_id, config.partner_id,
-            config.key, nv_space, SKY_LOG_LEVEL_ALL, &logger, &rand_bytes, &mytime) == SKY_ERROR) {
+            config.key, nv_space, SKY_LOG_LEVEL_ALL, &logger, &rand_bytes, &mytime,
+            (Sky_mallocfn_t)NULL) == SKY_ERROR) {
         printf("sky_open returned bad value, Can't continue\n");
         exit(-1);
     }

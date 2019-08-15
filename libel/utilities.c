@@ -23,8 +23,8 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include "../.submodules/tiny-AES128-C/aes.h"
-#define SKY_LIBEL 1
-#include "libel.h"
+#include "proto.h"
+#include "assert.h"
 
 /*! \brief set sky_errno and return Sky_status
  *
@@ -54,19 +54,20 @@ int validate_workspace(Sky_ctx_t *ctx)
         LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "NULL ctx");
         return false;
     }
-    if (ctx->len > TOTAL_BEACONS) {
+    if (ctx->len > CONFIG(ctx->cache, total_beacons)) {
         LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Too many beacons");
         return false;
     }
-    if (ctx->connected > TOTAL_BEACONS) {
+    if (ctx->connected != -1 && ctx->connected > CONFIG(ctx->cache, total_beacons)) {
         LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad connected value");
         return false;
     }
     if (ctx->header.crc32 == sky_crc32(&ctx->header.magic,
                                  (uint8_t *)&ctx->header.crc32 - (uint8_t *)&ctx->header.magic)) {
-        for (i = 0; i < TOTAL_BEACONS; i++) {
+        for (i = 0; i < CONFIG(ctx->cache, total_beacons); i++) {
             if (ctx->beacon[i].h.magic != BEACON_MAGIC || ctx->beacon[i].h.type > SKY_BEACON_MAX) {
-                LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad beacon #%d of %d", i, TOTAL_BEACONS);
+                LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad beacon #%d of %d", i,
+                    CONFIG(ctx->cache, total_beacons));
                 return false;
             }
         }
@@ -74,6 +75,7 @@ int validate_workspace(Sky_ctx_t *ctx)
         LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "CRC check failed");
         return false;
     }
+    validate_cache(ctx->cache, ctx->logf);
     return true;
 }
 
@@ -86,35 +88,49 @@ int validate_workspace(Sky_ctx_t *ctx)
 int validate_cache(Sky_cache_t *c, Sky_loggerfn_t logf)
 {
     int i, j;
+    Sky_cacheline_t *cl;
+    Beacon_t *b;
 
     if (c == NULL) {
-        (*logf)(SKY_LOG_LEVEL_DEBUG, "Cache validation: NUL pointer");
-        return false;
-    }
-
-    if (c->len != CACHE_SIZE) {
         if (logf != NULL)
-            (*logf)(SKY_LOG_LEVEL_DEBUG, "Cache validation failed: too big for CACHE_SIZE");
+            (*logf)(SKY_LOG_LEVEL_DEBUG, "Cache validation: NULL pointer");
         return false;
     }
 
+    if (c->len < 0 || c->len > SKY_MAX_CACHELINES) {
+        if (logf != NULL)
+            (*logf)(SKY_LOG_LEVEL_DEBUG, "Cache validation failed: too big");
+        return false;
+    }
+
+    if (c->header.magic != SKY_MAGIC) {
+        if (logf != NULL)
+            (*logf)(SKY_LOG_LEVEL_DEBUG, "Cache validation: Bad header");
+        return false;
+    }
+
+    cl = (void *)&c[1];
     if (c->header.crc32 ==
         sky_crc32(&c->header.magic, (uint8_t *)&c->header.crc32 - (uint8_t *)&c->header.magic)) {
-        for (i = 0; i < CACHE_SIZE; i++) {
-            if (c->cacheline[i].len > TOTAL_BEACONS) {
+        for (i = 0; i < c->len; i++) {
+            if (cl[i].len > SKY_MAX_BEACONS) {
                 if (logf != NULL)
-                    (*logf)(SKY_LOG_LEVEL_DEBUG,
-                        "Cache validation failed: too many beacons for TOTAL_BEACONS");
+                    (*logf)(SKY_LOG_LEVEL_DEBUG, "Cache validation failed: too many beacons");
                 return false;
             }
 
-            for (j = 0; j < TOTAL_BEACONS; j++) {
-                if (c->cacheline[i].beacon[j].h.magic != BEACON_MAGIC) {
+            if (c->total_beacons < 1 || c->total_beacons > SKY_MAX_BEACONS)
+                if (logf != NULL)
+                    (*logf)(SKY_LOG_LEVEL_DEBUG, "Cache validation failed: total beacon bad");
+
+            b = ((Beacon_t *)&cl[c->len]) + (c->total_beacons * i);
+            for (j = 0; j < c->total_beacons; j++) {
+                if (b[j].h.magic != BEACON_MAGIC) {
                     if (logf != NULL)
                         (*logf)(SKY_LOG_LEVEL_DEBUG, "Cache validation failed: Bad beacon info");
                     return false;
                 }
-                if (c->cacheline[i].beacon[j].h.type > SKY_BEACON_MAX) {
+                if (b[j].h.type > SKY_BEACON_MAX) {
                     if (logf != NULL)
                         (*logf)(SKY_LOG_LEVEL_DEBUG, "Cache validation failed: Bad beacon type");
                     return false;
@@ -221,55 +237,57 @@ int logfmt(
  */
 void dump_workspace(Sky_ctx_t *ctx)
 {
-    int i;
+    int j;
+    Beacon_t *b = ctx->beacon;
 
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "WorkSpace: Got %d beacons, WiFi %d, connected %d", ctx->len,
         ctx->ap_len, ctx->connected)
-    for (i = 0; i < ctx->len; i++) {
-        switch (ctx->beacon[i].h.type) {
+    for (j = 0; j < ctx->len; j++) {
+        b = &ctx->beacon[j];
+        switch (b->h.type) {
         case SKY_BEACON_AP:
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                "Beacon %-2d: Age: %d Type: WiFi, %sMAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %d, freq: %d",
-                i, ctx->beacon[i].ap.age, ctx->beacon[i].ap.in_cache ? "cached " : "       ",
-                ctx->beacon[i].ap.mac[0], ctx->beacon[i].ap.mac[1], ctx->beacon[i].ap.mac[2],
-                ctx->beacon[i].ap.mac[3], ctx->beacon[i].ap.mac[4], ctx->beacon[i].ap.mac[5],
-                ctx->beacon[i].ap.rssi, ctx->beacon[i].ap.freq)
+                " Beacon %-2d: Age: %d Type: WiFi, %sMAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %d, freq: %d",
+                j, b->ap.age, b->ap.in_cache ? "cached " : "       ", b->ap.mac[0], b->ap.mac[1],
+                b->ap.mac[2], b->ap.mac[3], b->ap.mac[4], b->ap.mac[5], b->ap.rssi, b->ap.freq)
             break;
         case SKY_BEACON_CDMA:
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                "Beacon %-2d: Age: %d Type: CDMA, sid: %d, nid: %d, bsid: %d, rssi: %d", i,
-                ctx->beacon[i].cdma.age, ctx->beacon[i].cdma.sid, ctx->beacon[i].cdma.nid,
-                ctx->beacon[i].cdma.bsid, ctx->beacon[i].cdma.rssi)
+                " Beacon %-2d: Age: %d Type: CDMA, sid: %d, nid: %d, bsid: %d, rssi: %d", j,
+                b->cdma.age, b->cdma.sid, b->cdma.nid, b->cdma.bsid, b->cdma.rssi)
             break;
         case SKY_BEACON_GSM:
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                "Beacon %-2d: Age: %d Type: GSM, lac: %d, ui: %d, mcc: %d, mnc: %d, rssi: %d", i,
-                ctx->beacon[i].gsm.age, ctx->beacon[i].gsm.lac, ctx->beacon[i].gsm.ci,
-                ctx->beacon[i].gsm.mcc, ctx->beacon[i].gsm.mnc, ctx->beacon[i].gsm.rssi)
+                " Beacon %-2d: Age: %d Type: GSM, lac: %d, ui: %d, mcc: %d, mnc: %d, rssi: %d", j,
+                b->gsm.age, b->gsm.lac, b->gsm.ci, b->gsm.mcc, b->gsm.mnc, b->gsm.rssi)
             break;
         case SKY_BEACON_LTE:
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                "Beacon %-2d: Age: %d Type: LTE, e-cellid: %d, mcc: %d, mnc: %d, tac: %d, rssi: %d",
-                i, ctx->beacon[i].lte.age, ctx->beacon[i].lte.e_cellid, ctx->beacon[i].lte.mcc,
-                ctx->beacon[i].lte.mnc, ctx->beacon[i].lte.tac, ctx->beacon[i].lte.rssi)
+                " Beacon %-2d: Age: %d Type: LTE, e-cellid: %d, mcc: %d, mnc: %d, tac: %d, rssi: %d",
+                j, b->lte.age, b->lte.e_cellid, b->lte.mcc, b->lte.mnc, b->lte.tac, b->lte.rssi)
             break;
         case SKY_BEACON_NBIOT:
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                "Beacon %-2d: Age: %d Type: nb IoT, mcc: %d, mnc: %d, e_cellid: %d, tac: %d, rssi: %d",
-                i, ctx->beacon[i].nbiot.age, ctx->beacon[i].nbiot.mcc, ctx->beacon[i].nbiot.mnc,
-                ctx->beacon[i].nbiot.e_cellid, ctx->beacon[i].nbiot.tac, ctx->beacon[i].nbiot.rssi)
+                " Beacon %-2d: Age: %d Type: nb IoT, mcc: %d, mnc: %d, e_cellid: %d, tac: %d, rssi: %d",
+                j, b->nbiot.age, b->nbiot.mcc, b->nbiot.mnc, b->nbiot.e_cellid, b->nbiot.tac,
+                b->nbiot.rssi)
             break;
         case SKY_BEACON_UMTS:
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                "Beacon %-2d: Age: %d Type: UMTS, lac: %d, ucid: %d, mcc: %d, mnc: %d, rssi: %d", i,
-                ctx->beacon[i].umts.age, ctx->beacon[i].umts.lac, ctx->beacon[i].umts.ucid,
-                ctx->beacon[i].umts.mcc, ctx->beacon[i].umts.mnc, ctx->beacon[i].umts.rssi)
+                " Beacon %-2d: Age: %d Type: UMTS, lac: %d, ucid: %d, mcc: %d, mnc: %d, rssi: %d",
+                j, b->umts.age, b->umts.lac, b->umts.ucid, b->umts.mcc, b->umts.mnc, b->umts.rssi)
             break;
         default:
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Beacon %-2d: Type: Unknown", i)
+            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, " Beacon %-2d: Type: Unknown", j)
             break;
         }
     }
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
+        "Config: cache lines:%d Total Beacons:%d Max AP Beacons:%d Thresholds:%d(Match) %d(Age) %d(Beacons) %d(RSSI)",
+        CONFIG(ctx->cache, cache_size), CONFIG(ctx->cache, total_beacons),
+        CONFIG(ctx->cache, max_ap_beacons), CONFIG(ctx->cache, cache_match_threshold),
+        CONFIG(ctx->cache, cache_age_threshold), CONFIG(ctx->cache, cache_beacon_threshold),
+        CONFIG(ctx->cache, cache_neg_rssi_threshold))
 }
 
 /*! \brief dump the beacons in the cache
@@ -281,61 +299,70 @@ void dump_workspace(Sky_ctx_t *ctx)
 void dump_cache(Sky_ctx_t *ctx)
 {
     int i, j;
-    Sky_cacheline_t *c;
+    Sky_cacheline_t *cl;
     Beacon_t *b;
 
-    for (i = 0; i < CACHE_SIZE; i++) {
-        c = &ctx->cache->cacheline[i];
-        if (c->len == 0 || c->time == 0) {
+    for (i = 0; i < ctx->cache->len; i++) {
+        cl = &ctx->cache->cacheline[i];
+        if (cl->len == 0 || cl->time == 0) {
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d of %d - empty len:%d ap_len:%d time:%u", i,
-                ctx->cache->len, c->len, c->ap_len, c->time)
+                ctx->cache->len, cl->len, cl->ap_len, cl->time)
         } else {
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d of %d%s GPS:%d.%06d,%d.%06d,%d", i,
-                ctx->cache->len, ctx->cache->newest == &ctx->cache->cacheline[i] ? "<-newest" : "",
-                (int)c->loc.lat, (int)fabs(round(1000000 * (c->loc.lat - (int)c->loc.lat))),
-                (int)c->loc.lon, (int)fabs(round(1000000 * (c->loc.lon - (int)c->loc.lon))),
-                c->loc.hpe)
-            for (j = 0; j < c->len; j++) {
-                b = &c->beacon[j];
+            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
+                "cache: %d of %d%s GPS:%d.%06d,%d.%06d,%d len:%d ap_len:%d time %ld", i,
+                ctx->cache->len, ctx->cache->newest == cl ? "<-newest" : "", (int)cl->loc.lat,
+                (int)fabs(round(1000000 * (cl->loc.lat - (int)cl->loc.lat))), (int)cl->loc.lon,
+                (int)fabs(round(1000000 * (cl->loc.lon - (int)cl->loc.lon))), cl->loc.hpe, cl->len,
+                cl->ap_len, cl->time)
+            for (j = 0; j < cl->len; j++) {
+                b = &cl->beacon[j];
                 switch (b->h.type) {
                 case SKY_BEACON_AP:
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                        "cache %-2d: Type: WiFi, MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %d, freq %d",
-                        i, b->ap.mac[0], b->ap.mac[1], b->ap.mac[2], b->ap.mac[3], b->ap.mac[4],
+                        " Beacon %-2d: Type: WiFi, MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %d, freq %d",
+                        j, b->ap.mac[0], b->ap.mac[1], b->ap.mac[2], b->ap.mac[3], b->ap.mac[4],
                         b->ap.mac[5], b->ap.rssi, b->ap.freq)
                     break;
                 case SKY_BEACON_CDMA:
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                        "cache %-2d: Type: CDMA, sid: %d, nid: %d, bsid: %d, rssi: %d", i,
+                        " Beacon %-2d: Type: CDMA, sid: %d, nid: %d, bsid: %d, rssi: %d", j,
                         b->cdma.sid, b->cdma.nid, b->cdma.bsid, b->cdma.rssi)
                     break;
                 case SKY_BEACON_GSM:
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                        "cache %-2d: Type: GSM, lac: %d, ui: %d, mcc: %d, mnc: %d, rssi: %d", i,
+                        " Beacon %-2d: Type: GSM, lac: %d, ui: %d, mcc: %d, mnc: %d, rssi: %d", j,
                         b->gsm.lac, b->gsm.ci, b->gsm.mcc, b->gsm.mnc, b->gsm.rssi)
                     break;
                 case SKY_BEACON_LTE:
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                        "cache %-2d: Age: %d Type: LTE, e-cellid: %d, mcc: %d, mnc: %d, tac: %d, rssi: %d",
-                        i, b->lte.age, b->lte.e_cellid, b->lte.mcc, b->lte.mnc, b->lte.tac,
+                        " Beacon %-2d: Age: %d Type: LTE, e-cellid: %d, mcc: %d, mnc: %d, tac: %d, rssi: %d",
+                        j, b->lte.age, b->lte.e_cellid, b->lte.mcc, b->lte.mnc, b->lte.tac,
                         b->lte.rssi)
                     break;
                 case SKY_BEACON_NBIOT:
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                        "cache %-2d: Type: NB-IoT, mcc: %d, mnc: %d, e_cellid: %d, tac: %d, rssi: %d",
-                        i, b->nbiot.mcc, b->nbiot.mnc, b->nbiot.e_cellid, b->nbiot.tac,
+                        " Beacon %-2d: Type: NB-IoT, mcc: %d, mnc: %d, e_cellid: %d, tac: %d, rssi: %d",
+                        j, b->nbiot.mcc, b->nbiot.mnc, b->nbiot.e_cellid, b->nbiot.tac,
                         b->nbiot.rssi)
                     break;
                 case SKY_BEACON_UMTS:
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                        "cache %-2d: Age: %d Type: UMTS, lac: %d, ucid: %d, mcc: %d, mnc: %d, rssi: %d",
-                        i, b->umts.age, b->umts.lac, b->umts.ucid, b->umts.mcc, b->umts.mnc,
-                        b->umts.rssi)
+                        " Beacon %-2d: Type: UMTS, lac: %d, ucid: %d, mcc: %d, mnc: %d, rssi: %d",
+                        j, b->umts.lac, b->umts.ucid, b->umts.mcc, b->umts.mnc, b->umts.rssi)
+                    break;
+                default:
+                    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, " Beacon %-2d: Type: Unknown", j)
                     break;
                 }
             }
         }
     }
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
+        "Config: cache lines:%d Total Beacons:%d Max AP Beacons:%d Thresholds:%d(Match) %d(Age) %d(Beacons) %d(RSSI)",
+        CONFIG(ctx->cache, cache_size), CONFIG(ctx->cache, total_beacons),
+        CONFIG(ctx->cache, max_ap_beacons), CONFIG(ctx->cache, cache_match_threshold),
+        CONFIG(ctx->cache, cache_age_threshold), CONFIG(ctx->cache, cache_beacon_threshold),
+        CONFIG(ctx->cache, cache_neg_rssi_threshold))
 }
 
 /*! \brief field extraction for dynamic use of Nanopb (ctx partner_id)

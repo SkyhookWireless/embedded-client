@@ -21,9 +21,9 @@
 #include <stdio.h>
 #include <time.h>
 #include <math.h>
-#define SKY_LIBEL
-#include "libel.h"
 #include "proto.h"
+
+#define MIN(x, y) ((x) > (y) ? (y) : (x))
 
 /* A monotonically increasing version number intended to track the client
  * software version, and which is sent to the server in each request. Clumsier
@@ -36,7 +36,7 @@
 static uint32_t sky_open_flag = 0;
 
 /*! \brief keep track of the device ID */
-static Sky_cache_t cache;
+static Sky_cache_t *cache;
 
 /*! \brief keep track of logging function */
 static Sky_randfn_t sky_rand_bytes;
@@ -49,6 +49,82 @@ static bool validate_device_id(uint8_t *device_id, uint32_t id_len);
 static bool validate_partner_id(uint32_t partner_id);
 static bool validate_aes_key_id(uint32_t aes_key_id);
 static bool validate_aes_key(uint8_t aes_key[AES_SIZE]);
+
+/*! \brief Allocate and initialize empty cache
+ *
+ *  @param sky_state Pointer to state buffer
+ *
+ *  @return Size of cache or 0 to indicate an error
+ *
+ * Cache memory layout
+ * +------------------------+
+ * |  Sky_cache_t           |
+ * |        :               |
+ * |     config             |
+ * |        :               |
+ * |       len (3)          |
+ * |   cacheline ==============+
+ * +------------------------+  |
+ * |  Sky_cacheline_t [0]   |<-+
+ * |       len              |
+ * |      beacon ====================+
+ * +------------------------+        |
+ * |  Sky_cacheline_t [1]   |        |
+ * |       len              |        |
+ * |      beacon ==================+
+ * +------------------------+      | |
+ * |  Sky_cacheline_t [2]   |      | |
+ * |       len              |      | |
+ * |      beacon ================+ | |
+ * +------------------------+    | | |
+ * |  Beacons_t [0] cache 0 |<---)-)-+
+ * +------------------------+    | |
+ * |  Beacons_t [1]         |    | |
+ * +------------------------+    | |
+ * |  Beacons_t [.]         |    | |
+ * +------------------------+    | |
+ * |  Beacons_t [n]         |    | |
+ * +------------------------+    | |
+ * |  Beacons_t [0] cache 1 |<---)-+
+ * +------------------------+    |
+ * |  Beacons_t [1]         |    |
+ * +------------------------+    |
+ * |  Beacons_t [.]         |    |
+ * +------------------------+    |
+ * |  Beacons_t [n]         |    |
+ * +------------------------+    |
+ * |  Beacons_t [0] cache 2 |<---+
+ * +------------------------+
+ * |  Beacons_t [1]         |
+ * +------------------------+
+ * |  Beacons_t [.]         |
+ * +------------------------+
+ * |  Beacons_t [n]         |
+ * +------------------------+
+ */
+static int cache_init(uint32_t cache_size, uint32_t total_beacons, Sky_mallocfn_t pmalloc)
+{
+    void *p;
+    int i;
+    int cache_bytes = sizeof(Sky_cache_t) + sizeof(Sky_cacheline_t) * cache_size +
+                      sizeof(Beacon_t) * total_beacons * cache_size;
+
+    if (pmalloc != NULL) {
+        if ((p = (*pmalloc)(cache_bytes)) == NULL)
+            return 0;
+    } else if ((p = malloc(cache_bytes)) == NULL)
+        return 0;
+    cache = p;
+    memset(cache, 0, cache_bytes);
+    cache->len = cache_size;
+    cache->total_beacons = total_beacons;
+    cache->cacheline = (void *)&cache[1];
+    Beacon_t *b = (void *)&cache->cacheline[cache->len];
+    for (i = 0; i < cache_size; i++) {
+        cache->cacheline[i].beacon = &b[total_beacons * i];
+    }
+    return cache_bytes;
+}
 
 /*! \brief Initialize Skyhook library and verify access to resources
  *
@@ -63,6 +139,7 @@ static bool validate_aes_key(uint8_t aes_key[AES_SIZE]);
  *  @param logf pointer to logging function
  *  @param rand_bytes pointer to random function
  *  @param gettime pointer to time function
+ *  @param malloc pointer to malloc function
  *
  *  @return sky_status_t SKY_SUCCESS or SKY_ERROR
  *
@@ -73,17 +150,24 @@ static bool validate_aes_key(uint8_t aes_key[AES_SIZE]);
  */
 Sky_status_t sky_open(Sky_errno_t *sky_errno, uint8_t *device_id, uint32_t id_len,
     uint32_t partner_id, uint32_t aes_key_id, uint8_t aes_key[16], void *state_buf,
-    Sky_log_level_t min_level, Sky_loggerfn_t logf, Sky_randfn_t rand_bytes, Sky_timefn_t gettime)
+    Sky_log_level_t min_level, Sky_loggerfn_t logf, Sky_randfn_t rand_bytes, Sky_timefn_t gettime,
+    Sky_mallocfn_t pmalloc)
 {
     Sky_cache_t *sky_state = state_buf;
+    Sky_cacheline_t *sky_state_cl = (void *)&sky_state[1];
     int i = 0;
     int j = 0;
+    int cache_bytes;
+
+    if (logf != NULL)
+        (*logf)(SKY_LOG_LEVEL_DEBUG, "Skyhook Embedded Library (Version: " VERSION ")");
 
     /* Only consider up to 16 bytes. Ignore any extra */
     id_len = (id_len > MAX_DEVICE_ID) ? 16 : id_len;
 
     if (sky_state != NULL && !validate_cache(sky_state, logf)) {
-        (*logf)(SKY_LOG_LEVEL_DEBUG, "Invalid state buffer was ignored!");
+        if (logf)
+            (*logf)(SKY_LOG_LEVEL_DEBUG, "Invalid state buffer was ignored!");
         sky_state = NULL;
     }
 
@@ -102,30 +186,90 @@ Sky_status_t sky_open(Sky_errno_t *sky_errno, uint8_t *device_id, uint32_t id_le
             return sky_return(sky_errno, SKY_ERROR_NONE);
         else
             return sky_return(sky_errno, SKY_ERROR_ALREADY_OPEN);
-    } else if (sky_state)
-        cache = *sky_state;
-    else {
-        cache.header.magic = SKY_MAGIC;
-        cache.header.size = sizeof(cache);
-        cache.header.time = (uint32_t)(*sky_time)(NULL);
-        cache.header.crc32 = sky_crc32(
-            &cache.header.magic, (uint8_t *)&cache.header.crc32 - (uint8_t *)&cache.header.magic);
-        cache.len = CACHE_SIZE;
-        for (i = 0; i < CACHE_SIZE; i++) {
-            for (j = 0; j < TOTAL_BEACONS; j++) {
-                cache.cacheline[i].time = 0;
-                cache.cacheline[i].len = 0;
-                cache.cacheline[i].beacon[j].h.magic = BEACON_MAGIC;
-                cache.cacheline[i].beacon[j].h.type = SKY_BEACON_MAX;
+    } else if (sky_state && sky_state->len == CONFIG(sky_state, cache_size) &&
+               sky_state->total_beacons == CONFIG(sky_state, total_beacons)) {
+        /* Restore cache content */
+        if (logf)
+            (*logf)(SKY_LOG_LEVEL_DEBUG, "Restore cache content from state buffer");
+        cache_bytes =
+            cache_init(CONFIG(sky_state, cache_size), CONFIG(sky_state, total_beacons), pmalloc);
+        cache->config = sky_state->config;
+        cache->header.magic = SKY_MAGIC;
+        cache->header.size = cache_bytes;
+        cache->header.time = (uint32_t)(*sky_time)(NULL);
+        cache->header.crc32 = sky_crc32(&cache->header.magic,
+            (uint8_t *)&cache->header.crc32 - (uint8_t *)&cache->header.magic);
+        for (i = 0; i < cache->len; i++) {
+            Beacon_t *sky_state_b = (void *)&sky_state_cl[sky_state->len];
+            sky_state_b += (i * CONFIG(cache, total_beacons));
+            cache->cacheline[i].len = sky_state_cl[i].len;
+            cache->cacheline[i].ap_len = sky_state_cl[i].ap_len;
+            cache->cacheline[i].time = sky_state_cl[i].time;
+            cache->cacheline[i].loc = sky_state_cl[i].loc;
+            for (j = 0; j < MIN(CONFIG(cache, total_beacons), sky_state_cl[i].len); j++) {
+                cache->cacheline[i].beacon[j] = sky_state_b[j];
+            }
+            for (j = MIN(CONFIG(cache, total_beacons), sky_state_cl[i].len);
+                 j < CONFIG(cache, total_beacons); j++) {
+                cache->cacheline[i].beacon[j].h.magic = BEACON_MAGIC;
+                cache->cacheline[i].beacon[j].h.type = SKY_BEACON_MAX;
+            }
+        }
+    } else if (sky_state) {
+        /* build cache based on new config */
+        if (logf)
+            (*logf)(SKY_LOG_LEVEL_DEBUG, "Rebuild cache: config parameters changed");
+        cache_bytes =
+            cache_init(CONFIG(sky_state, cache_size), CONFIG(sky_state, total_beacons), pmalloc);
+        cache->config = sky_state->config;
+        cache->header.magic = SKY_MAGIC;
+        cache->header.size = cache_bytes;
+        cache->header.time = (uint32_t)(*sky_time)(NULL);
+        cache->header.crc32 = sky_crc32(&cache->header.magic,
+            (uint8_t *)&cache->header.crc32 - (uint8_t *)&cache->header.magic);
+        for (i = 0; i < cache->len; i++) {
+            cache->cacheline[i].time = 0;
+            cache->cacheline[i].len = 0;
+            cache->cacheline[i].ap_len = 0;
+            for (j = 0; j < CONFIG(cache, total_beacons); j++) {
+                cache->cacheline[i].beacon[j].h.magic = BEACON_MAGIC;
+                cache->cacheline[i].beacon[j].h.type = SKY_BEACON_MAX;
+            }
+        }
+    } else {
+        /* build cache based on default values */
+        if (logf)
+            (*logf)(SKY_LOG_LEVEL_DEBUG, "Building cache based on default values");
+        cache_bytes = cache_init(CACHE_SIZE, TOTAL_BEACONS, pmalloc);
+        CONFIG(cache, cache_size) = CACHE_SIZE;
+        CONFIG(cache, total_beacons) = TOTAL_BEACONS;
+        CONFIG(cache, max_ap_beacons) = MAX_AP_BEACONS;
+        CONFIG(cache, cache_match_threshold) = CACHE_MATCH_THRESHOLD;
+        CONFIG(cache, cache_age_threshold) = CACHE_AGE_THRESHOLD;
+        CONFIG(cache, cache_beacon_threshold) = CACHE_BEACON_THRESHOLD;
+        CONFIG(cache, cache_neg_rssi_threshold) = -CACHE_RSSI_THRESHOLD;
+        cache->header.magic = SKY_MAGIC;
+        cache->header.size = cache_bytes;
+        cache->header.time = (uint32_t)(*sky_time)(NULL);
+        cache->header.crc32 = sky_crc32(&cache->header.magic,
+            (uint8_t *)&cache->header.crc32 - (uint8_t *)&cache->header.magic);
+        for (i = 0; i < cache->len; i++) {
+            cache->cacheline[i].time = 0;
+            cache->cacheline[i].len = 0;
+            cache->cacheline[i].ap_len = 0;
+            for (j = 0; j < CONFIG(cache, total_beacons); j++) {
+                cache->cacheline[i].beacon[j].h.magic = BEACON_MAGIC;
+                cache->cacheline[i].beacon[j].h.type = SKY_BEACON_MAX;
             }
         }
     }
-    /* initialize cache.newest */
-    cache.newest = &cache.cacheline[0];
-    for (i = 1; i < CACHE_SIZE; i++) {
-        if (cache.cacheline[i].time != (uint32_t)(*sky_time)(NULL) &&
-            cache.newest->time < cache.cacheline[i].time)
-            cache.newest = &cache.cacheline[i];
+
+    /* initialize cache->newest */
+    cache->newest = &cache->cacheline[0];
+    for (i = 1; i < cache->len; i++) {
+        if (cache->cacheline[i].time != (uint32_t)(*sky_time)(NULL) &&
+            cache->newest->time < cache->cacheline[i].time)
+            cache->newest = &cache->cacheline[i];
     }
 
     /* Sanity check */
@@ -133,15 +277,21 @@ Sky_status_t sky_open(Sky_errno_t *sky_errno, uint8_t *device_id, uint32_t id_le
         !validate_aes_key_id(aes_key_id) || !validate_aes_key(aes_key))
         return sky_return(sky_errno, SKY_ERROR_BAD_PARAMETERS);
 
-    cache.sky_id_len = id_len;
-    memcpy(cache.sky_device_id, device_id, id_len);
-    cache.sky_partner_id = partner_id;
-    cache.sky_aes_key_id = aes_key_id;
-    memcpy(cache.sky_aes_key, aes_key, sizeof(cache.sky_aes_key));
+    cache->sky_id_len = id_len;
+    memcpy(cache->sky_device_id, device_id, id_len);
+    cache->sky_partner_id = partner_id;
+    cache->sky_aes_key_id = aes_key_id;
+    memcpy(cache->sky_aes_key, aes_key, sizeof(cache->sky_aes_key));
     sky_open_flag = true;
 
-    if (logf != NULL)
-        (*logf)(SKY_LOG_LEVEL_DEBUG, "Skyhook Embedded Library (Version: " VERSION ")");
+    /* validate that the total cache structure is no bigger than the space reserved */
+    if ((uint8_t *)&cache->cacheline[cache->len - 1].beacon[CONFIG(cache, total_beacons)] -
+            (uint8_t *)cache >
+        cache->header.size) {
+        if (logf != NULL)
+            (*logf)(SKY_LOG_LEVEL_DEBUG, "Error: cache size check failed!");
+        return sky_return(sky_errno, SKY_ERROR_RESOURCE_UNAVAILABLE);
+    }
 
     return sky_return(sky_errno, SKY_ERROR_NONE);
 }
@@ -172,13 +322,16 @@ int32_t sky_sizeof_state(void *sky_state)
  *  @return Size of state buffer or 0 to indicate that the buffer was invalid
  */
 int32_t sky_sizeof_workspace(void)
-{
-    /* Total space required
+{ /* Total space required
      *
      * header - Magic number, size of space, checksum
      * body - number of beacons, beacon data, gnss, request buffer
      */
-    return sizeof(Sky_ctx_t);
+    if (sky_open_flag && cache != NULL)
+        return sizeof(Sky_ctx_t) + sizeof(Beacon_t) * (CONFIG(cache, total_beacons) + 1) +
+               sizeof(bool) * (CONFIG(cache, total_beacons) + 1);
+    else
+        return 0;
 }
 
 /*! \brief Initializes the workspace provided ready to build a request
@@ -202,7 +355,11 @@ Sky_ctx_t *sky_new_request(void *workspace_buf, uint32_t bufsize, Sky_errno_t *s
         sky_return(sky_errno, SKY_ERROR_BAD_PARAMETERS);
         return NULL;
     }
+    if (CONFIG(cache, cache_size) != cache->len ||
+        CONFIG(cache, total_beacons) != cache->total_beacons)
+        sky_return(sky_errno, SKY_ERROR_NEW_CONFIG);
 
+    memset(workspace_buf, 0, bufsize);
     /* update header in workspace */
     ctx->header.magic = SKY_MAGIC;
     ctx->header.size = bufsize;
@@ -210,7 +367,7 @@ Sky_ctx_t *sky_new_request(void *workspace_buf, uint32_t bufsize, Sky_errno_t *s
     ctx->header.crc32 = sky_crc32(
         &ctx->header.magic, (uint8_t *)&ctx->header.crc32 - (uint8_t *)&ctx->header.magic);
 
-    ctx->cache = &cache;
+    ctx->cache = cache;
     ctx->min_level = sky_min_level;
     ctx->logf = sky_logf;
     ctx->rand_bytes = sky_rand_bytes;
@@ -218,13 +375,16 @@ Sky_ctx_t *sky_new_request(void *workspace_buf, uint32_t bufsize, Sky_errno_t *s
     ctx->len = 0; /* empty */
     ctx->ap_len = 0; /* empty */
     ctx->gps.lat = NAN; /* empty */
-    for (i = 0; i < TOTAL_BEACONS; i++) {
+    ctx->beacon = (void *)&ctx[1];
+    ctx->in_cache = (void *)&ctx->beacon[CONFIG(cache, total_beacons) + 1];
+    for (i = 0; i < CONFIG(cache, total_beacons) + 1; i++) {
         ctx->beacon[i].h.magic = BEACON_MAGIC;
         ctx->beacon[i].h.type = SKY_BEACON_MAX;
     }
     ctx->connected = -1; /* all unconnected */
     if (ctx->cache->len) {
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "%d cachelines present", ctx->cache->len)
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache has %d cachelines and %d total beacons",
+            ctx->cache->len, ctx->cache->total_beacons)
         dump_cache(ctx);
     }
     return ctx;
@@ -638,7 +798,7 @@ Sky_finalize_t sky_finalize_request(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, void
         ctx->len, bufsize)
 
     /* encode request */
-    rc = serialize_request(ctx, request_buf, bufsize, SW_VERSION);
+    rc = serialize_request(ctx, request_buf, bufsize, SW_VERSION, 1);
 
     if (rc > 0) {
         *response_size = get_maximum_response_size();
@@ -675,7 +835,7 @@ Sky_status_t sky_sizeof_request_buf(Sky_ctx_t *ctx, uint32_t *size, Sky_errno_t 
 
     /* encode request into the bit bucket, just to determine the length of the
      * encoded message */
-    rc = serialize_request(ctx, NULL, 0, SW_VERSION);
+    rc = serialize_request(ctx, NULL, 0, SW_VERSION, 1);
 
     if (rc > 0) {
         *size = (uint32_t)rc;
@@ -713,6 +873,9 @@ Sky_status_t sky_decode_response(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, void *r
     }
     loc->time = (*ctx->gettime)(NULL);
 
+    if (ctx->cache->len != CONFIG(ctx->cache, cache_size))
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Server sent new cache_size %d (was %d)",
+            CONFIG(ctx->cache, cache_size), ctx->cache->len)
     /* Add location and current beacons to Cache */
     if (add_to_cache(ctx, loc) == SKY_ERROR) {
         LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "failed to add to cache")
@@ -877,8 +1040,9 @@ Sky_status_t sky_close(Sky_errno_t *sky_errno, void **sky_state)
 
     sky_open_flag = false;
 
-    if (sky_state != NULL)
-        *sky_state = &cache;
+    if (sky_state != NULL) {
+        *sky_state = cache;
+    }
     return sky_return(sky_errno, SKY_ERROR_NONE);
 }
 
