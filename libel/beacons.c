@@ -26,6 +26,8 @@
 
 #define MIN(x, y) ((x) > (y) ? (y) : (x))
 #define NOMINAL_RSSI(b) ((b) == -1 ? (-90) : (b))
+#define PUT_IN_CACHE true
+#define GET_FROM_CACHE false
 
 void dump_workspace(Sky_ctx_t *ctx);
 void dump_cache(Sky_ctx_t *ctx);
@@ -387,9 +389,13 @@ int find_best_match(Sky_ctx_t *ctx, bool put)
     /* score each cache line wrt beacon match ratio */
     for (i = 0; i < CACHE_SIZE; i++) {
         ratio[i] = score[i] = 0;
-        if (put && (ctx->cache->cacheline[i].time == 0 ||
-                       (uint32_t)(*ctx->gettime)(NULL)-ctx->cache->cacheline[i].time >
-                           (CACHE_AGE_THRESHOLD * 60 * 60))) {
+        if (ctx->cache->cacheline[i].time != 0 &&
+            ((uint32_t)(*ctx->gettime)(NULL)-ctx->cache->cacheline[i].time) >
+                CACHE_AGE_THRESHOLD * 60 * 60) {
+            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache line %d expired", i);
+            ctx->cache->cacheline[i].time = 0;
+        }
+        if (put && (ctx->cache->cacheline[i].time == 0)) {
             /* looking for match for put, empty cacheline = 1st choice */
             score[i] = TOTAL_BEACONS * 2;
         } else if (!put && ctx->cache->cacheline[i].time == 0) {
@@ -476,12 +482,6 @@ int find_oldest(Sky_ctx_t *ctx)
     int oldest = (*ctx->gettime)(NULL);
 
     for (i = 0; i < CACHE_SIZE; i++) {
-        /* Discard old cachelines */
-        if ((uint32_t)(*ctx->gettime)(NULL)-ctx->cache->cacheline[i].time >
-            (CACHE_AGE_THRESHOLD * 60 * 60)) {
-            ctx->cache->cacheline[i].time = 0;
-            return i;
-        }
         if (ctx->cache->cacheline[i].time == 0)
             return i;
         else if (ctx->cache->cacheline[i].time < oldest) {
@@ -542,7 +542,7 @@ Sky_status_t add_to_cache(Sky_ctx_t *ctx, Sky_location_t *loc)
     /*    yes - add entry here */
     /* else find oldest cache entry */
     /*    yes - add entryu here */
-    if ((i = find_best_match(ctx, 1)) < 0) {
+    if ((i = find_best_match(ctx, PUT_IN_CACHE)) < 0) {
         i = find_oldest(ctx);
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "find_oldest chose cache %d of 0..%d", i, CACHE_SIZE)
     } else {
@@ -588,5 +588,5 @@ int get_from_cache(Sky_ctx_t *ctx)
         LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Don't have good time of day!")
         return SKY_ERROR;
     }
-    return find_best_match(ctx, 0);
+    return find_best_match(ctx, GET_FROM_CACHE);
 }
