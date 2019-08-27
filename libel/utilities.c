@@ -324,9 +324,8 @@ void dump_cache(Sky_ctx_t *ctx)
                     break;
                 case SKY_BEACON_UMTS:
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                        "cache %-2d: Age: %d Type: UMTS, lac: %d, ucid: %d, mcc: %d, mnc: %d, rssi: %d",
-                        i, b->umts.age, b->umts.lac, b->umts.ucid, b->umts.mcc, b->umts.mnc,
-                        b->umts.rssi)
+                        "cache %-2d: Type: UMTS, lac: %d, ucid: %d, mcc: %d, mnc: %d, rssi: %d", i,
+                        b->umts.lac, b->umts.ucid, b->umts.mcc, b->umts.mnc, b->umts.rssi)
                     break;
                 }
             }
