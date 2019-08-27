@@ -20,7 +20,7 @@
 
 /* Change to false to remove all calls to logging */
 #define SKY_DEBUG true
-#define SKY_LOG_LENGTH 200
+#define SKY_LOG_LENGTH 80
 
 /*! \brief The maximum number of beacons passed to the server in a request
  */
