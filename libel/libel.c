@@ -25,8 +25,6 @@
 #include "libel.h"
 #include "proto.h"
 
-#define SW_VERSION 0
-
 /*! \brief keep track of when the user has opened the library */
 static uint32_t sky_open_flag = 0;
 
@@ -591,7 +589,7 @@ Sky_finalize_t sky_finalize_request(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, void
     }
 
     /* encode request */
-    rc = serialize_request(ctx, request_buf, bufsize, SW_VERSION);
+    rc = serialize_request(ctx, request_buf, bufsize);
 
     if (rc > 0) {
         *response_size = get_maximum_response_size();
@@ -626,7 +624,7 @@ Sky_status_t sky_sizeof_request_buf(Sky_ctx_t *ctx, uint32_t *size, Sky_errno_t 
 
     /* encode request into the bit bucket, just to determine the length of the
      * encoded message */
-    rc = serialize_request(ctx, NULL, 0, SW_VERSION);
+    rc = serialize_request(ctx, NULL, 0);
 
     if (rc > 0) {
         *size = (uint32_t)rc;
