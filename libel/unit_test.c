@@ -64,16 +64,20 @@ void set_mac(uint8_t *mac)
       { 0x24, 0x45, 0x64, 0xb2, 0xf5, 0x7e } };
     /* clang-format on */
 
-    if (rand() % 7 == 0) {
+    if (rand() % 3 == 0) {
         /* Virtual MAC */
         memcpy(mac, refs[0], sizeof(refs[0]));
-        mac[rand() % 3 + 3] ^= (0x01 << (rand() % 7));
+        mac[rand() % 2 + 4] ^= (0x01 << (rand() % 7));
         printf("Virt MAC\n");
-    } else if (rand() % 7 != 0) {
+    } else if (rand() % 3 != 0) {
         /* rand MAC */
-        memcpy(mac, refs[rand() % 5], sizeof(refs[0]));
-        mac[rand() % 3] = (rand() % 256);
-        printf("Rand MAC\n");
+        memcpy(mac, refs[rand() % 3], sizeof(refs[0]));
+        if (rand() % 2 == 0) {
+            mac[rand() % 3] = (rand() % 256);
+            printf("Rand MAC\n");
+        } else {
+            printf("Known MAC\n");
+        }
     } else {
         /* Non Virtual MAC */
         uint8_t ref[] = { 0xd4, 0x85, 0x64, 0xb2, 0xf5, 0x7e };
@@ -124,7 +128,23 @@ int rand_bytes(uint8_t *rand_buf, uint32_t bufsize)
     return bufsize;
 }
 
+/*! \brief cound cache lines in use
+ *
+ *  @returns number of cache lines not empty
+ */
+int beacons_in_cache_rssi(Sky_cache_t *c)
+{
+    int i, j, total = 0;
+
+    for (i = 0; i < CACHE_SIZE; i++)
+        for (j = 0; j < c->cacheline[i].ap_len; j++)
+            total += c->cacheline[i].beacon[j].ap.rssi;
+    return total;
+}
+
 /*! \brief check for saved cache state
+ *
+ *   If state found, initialize random number generator based on number of beacons in saved state
  *
  *  @returns NULL for failure to restore cache, pointer to cache otherwise
  */
@@ -142,12 +162,16 @@ void *nv_cache(void)
                     fio) == 1) {
                 if (validate_cache(&nv_space, &logger)) {
                     printf("validate_cache: Restoring Cache\n");
+                    /* Randomize if restoring cache from previous run */
+                    srand((unsigned)beacons_in_cache_rssi(&nv_space));
+                    printf("Rand( %d )\n", beacons_in_cache_rssi(&nv_space));
                     return &nv_space;
                 } else
                     printf("validate_cache: false\n");
             }
         }
     }
+    printf("cache restore: failed\n");
     return NULL;
 }
 
@@ -200,9 +224,6 @@ int main(int ac, char **av)
     Sky_beacon_type_t t;
     Beacon_t b[25];
     Sky_location_t loc;
-
-    /* Intializes random number generator */
-    srand((unsigned)time(NULL));
 
     if (sky_open(&sky_errno, mac /* device_id */, MAC_SIZE, 1, 1, aes_key, nv_cache(),
             SKY_LOG_LEVEL_ALL, &logger, NULL, &mytime) == SKY_ERROR) {
@@ -383,9 +404,25 @@ int main(int ac, char **av)
             }
     }
 
+        /* Save to cache with a location */
+        /* Set some new dynamic parameters */
+        /* Create location and add to cache */
+#if 0
     if (sky_decode_response(ctx, &sky_errno, NULL, 0, &loc))
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "sky_decode_response sky_errno contains '%s'",
             sky_perror(sky_errno))
+#else
+    loc.lat = -80.0 - ((float)rand() / RAND_MAX * 30.0);
+    loc.lon = 30.0 + (30.0 * (float)rand() / RAND_MAX);
+    loc.hpe = 30.0 + (500.0 * (float)rand() / RAND_MAX);
+    loc.time = (*ctx->gettime)(NULL);
+    loc.location_source = SKY_LOCATION_SOURCE_WIFI;
+    loc.location_status = SKY_LOCATION_STATUS_SUCCESS;
+
+    add_to_cache(ctx, &loc);
+    dump_cache(ctx);
+
+#endif
 
     if (sky_close(&sky_errno, &pstate))
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "sky_close sky_errno contains '%s'", sky_perror(sky_errno))
