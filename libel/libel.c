@@ -705,6 +705,7 @@ Sky_finalize_t sky_finalize_request(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, void
         *sky_errno = SKY_ERROR_NONE;
 
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Request buffer of %d bytes prepared", rc)
+        LOG_BUFFER(ctx, SKY_LOG_LEVEL_DEBUG, request_buf, rc)
         return SKY_FINALIZE_REQUEST;
     } else {
         *sky_errno = SKY_ERROR_ENCODE_ERROR;

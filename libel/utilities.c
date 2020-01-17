@@ -33,6 +33,8 @@
 #define SKY_LIBEL 1
 #include "libel.h"
 
+#define MIN(a, b) ((a < b) ? a : b)
+
 /*! \brief set sky_errno and return Sky_status
  *
  *  @param sky_errno sky_errno is the error code
@@ -225,6 +227,71 @@ int logfmt(
     return ret;
 }
 #endif
+
+/*! \brief dump maximum number of bytes of the given buffer in hex on one line
+ *
+ *  @param buf pointer to the buffer
+ *  @param bufsize size of the buffer in bytes
+ *
+ *  @returns number of bytes dumpped, or negitive number on error
+ */
+int dump_hex32(const char *file, const char *function, Sky_ctx_t *ctx, Sky_log_level_t level,
+    void *buffer, uint32_t bufsize)
+{
+#if SKY_DEBUG
+    static char *hex = "0123456789ABCDEF";
+    char buf[SKY_LOG_LENGTH];
+    uint8_t *b = (uint8_t *)buffer;
+    int n, N, pb;
+    if (level > ctx->min_level || function == NULL || buffer == NULL || bufsize <= 0)
+        return -1;
+    memset(buf, '\0', sizeof(buf));
+    n = strlen(strncpy(buf, sky_basename(file), 20));
+    buf[n++] = ':';
+    n += strlen(strncpy(buf + n, function, 20));
+    buf[n++] = '(';
+    buf[n++] = ')';
+
+    N = n + (32 * 3 - 1); /* 32 bytes per line (typically ' XX') */
+    /* if width of log line (SKY_LOG_LENGTH) too short for pretty print */
+    for (pb = 0; n < MIN(SKY_LOG_LENGTH - 4, N);) {
+        if (pb < bufsize) {
+            if (pb && ((pb)&3) == 0) /* mark every four bytes */
+                buf[n++] = '|';
+            else
+                buf[n++] = ' ';
+            buf[n++] = hex[b[pb] >> 4];
+            buf[n++] = hex[b[pb++] & 0x0f];
+        } else
+            break;
+    }
+    (*ctx->logf)(level, buf);
+    return pb;
+#endif
+}
+
+/*! \brief dump all bytes of the given buffer in hex
+ *
+ *  @param buf pointer to the buffer
+ *  @param bufsize size of the buffer in bytes
+ *
+ *  @returns number of bytes dumpped, or negitive number on error
+ */
+int log_buffer(const char *file, const char *function, Sky_ctx_t *ctx, Sky_log_level_t level,
+    void *buffer, uint32_t bufsize)
+{
+#if SKY_DEBUG
+    int i, n = bufsize;
+    uint8_t *p = buffer;
+    /* try to print 32 bytes per line till all dumped */
+    while ((i = dump_hex32(file, function, ctx, level, (void *)(p + (bufsize - n)), n)) > 0)
+        n -= i;
+    if (i < 0)
+        return -1;
+    else
+        return bufsize - n;
+#endif
+}
 
 /*! \brief dump the beacons in the workspace
  *
