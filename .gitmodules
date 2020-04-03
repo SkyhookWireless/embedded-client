@@ -9,3 +9,4 @@
 [submodule ".submodules/embedded-protocol"]
 	path = .submodules/embedded-protocol
 	url = git@github.com:SkyhookWireless/embedded-protocol.git
+	branch = ELG-263

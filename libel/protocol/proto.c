@@ -474,6 +474,8 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
 
     pb_istream_t istream;
 
+    int i;
+
     // We assume that buf contains the response message in its entirety. (Since
     // the server closes the connection after sending the response, the client
     // doesn't need to know how many bytes to read - it just keeps reading
@@ -487,12 +489,14 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
 
     buf += 1;
 
+    printf("deserialize_response: (buf_len < 1 + hdr_size), %d\n", (buf_len < 1 + hdr_size));
     if (buf_len < 1 + hdr_size)
         return -1;
 
     istream = pb_istream_from_buffer(buf, hdr_size);
 
     if (!pb_decode(&istream, RsHeader_fields, &header)) {
+        printf("pb_decode failed\n");
         return -1;
     }
 
@@ -503,12 +507,15 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
         buf += hdr_size;
 
         // Deserialize the crypto_info.
-        if (buf_len < 1 + hdr_size + header.crypto_info_length + header.rs_length)
+        if (buf_len < 1 + hdr_size + header.crypto_info_length + header.rs_length) {
+            printf("buf_len failed Deserialize the crypto_info\n");
             return -1;
+        }
 
         istream = pb_istream_from_buffer(buf, header.crypto_info_length);
 
         if (!pb_decode(&istream, CryptoInfo_fields, &crypto_info)) {
+            printf("pb_decode failed\n");
             return -1;
         }
 
@@ -523,12 +530,17 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
         istream = pb_istream_from_buffer(buf, header.rs_length - crypto_info.aes_padding_length);
 
         if (!pb_decode(&istream, Rs_fields, &rs)) {
+            printf("pb_decode 2 failed\n");
             return -1;
         } else {
             loc->lat = rs.lat;
             loc->lon = rs.lon;
             loc->hpe = (uint16_t)rs.hpe;
             loc->location_source = (Sky_loc_source_t)rs.source;
+            printf("Used: len %d - ", rs.used_aps.size);
+            for (i = 0; i < rs.used_aps.size; i++)
+                printf("%02X ", rs.used_aps.bytes[i]);
+            printf("\n");
         }
         if (apply_config_overrides(ctx->cache, &rs)) {
             if (ctx->logf && SKY_LOG_LEVEL_DEBUG <= ctx->min_level)
