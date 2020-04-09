@@ -45,13 +45,24 @@ typedef enum {
     SKY_BEACON_MAX, /* add more before this */
 } Sky_beacon_type_t;
 
+/*! \brief Property of beacon
+ */
+typedef struct {
+    uint8_t in_cache : 1;
+    uint8_t used : 1;
+} Sky_beacon_property_t;
+
+struct header {
+    uint16_t magic; /* Indication that this beacon entry is valid */
+    uint16_t type; /* sky_beacon_type_t */
+};
 /*! \brief Access Point data
  */
 struct ap {
     uint16_t magic; /* Indication that this beacon entry is valid */
     uint16_t type; /* sky_beacon_type_t */
     uint8_t mac[MAC_SIZE];
-    uint8_t in_cache; /* beacon is in cache */
+    Sky_beacon_property_t property; /* beacon is in cache and used? */
     uint32_t age;
     uint32_t freq;
     int16_t rssi;
@@ -124,10 +135,6 @@ struct nbiot {
     int16_t rssi;
 };
 
-struct header {
-    uint16_t magic; /* Indication that this beacon entry is valid */
-    uint16_t type; /* sky_beacon_type_t */
-};
 typedef union beacon {
     struct header h;
     struct ap ap;

@@ -38,7 +38,7 @@
 
 void dump_workspace(Sky_ctx_t *ctx);
 void dump_cache(Sky_ctx_t *ctx);
-static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl);
+static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl, int *index);
 
 /*! \brief test two MAC addresses for being virtual aps
  *
@@ -168,20 +168,42 @@ static Sky_status_t filter_by_rssi(Sky_ctx_t *ctx)
         /* search from middle of range looking for beacon not in cache */
         for (jump = 0, up_down = -1, i = ctx->ap_len / 2; i >= 0 && i < ctx->ap_len;
              jump++, i += up_down * jump, up_down = -up_down) {
-            if (!ctx->beacon[i].ap.in_cache) {
+            if (!ctx->beacon[i].ap.property.in_cache) {
                 LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "Warning: rssi range is small. %s beacon",
                     !jump ? "Remove middle" : "Found non-cached")
                 return remove_beacon(ctx, i);
             }
         }
-        LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "Warning: rssi range is small. Removing cached beacon")
+        /* search from middle of range looking for Unused beacon in cache */
+        for (jump = 0, up_down = -1, i = ctx->ap_len / 2; i >= 0 && i < ctx->ap_len;
+             jump++, i += up_down * jump, up_down = -up_down) {
+            if (ctx->beacon[i].ap.property.in_cache && !ctx->beacon[i].ap.property.used) {
+                LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "Warning: rssi range is small. %s beacon",
+                    !jump ? "Remove middle Unused" : "Found Unused")
+                return remove_beacon(ctx, i);
+            }
+        }
+        LOGFMT(
+            ctx, SKY_LOG_LEVEL_WARNING, "Warning: rssi range is small. Removing cached Used beacon")
         return remove_beacon(ctx, ctx->ap_len / 2);
     }
 
-    /* if beacon with min RSSI is below threshold, throw it out */
+    /* if beacon with min RSSI is below threshold, throw out weak one, not in cache or Unused */
     if (NOMINAL_RSSI(ctx->beacon[0].ap.rssi) < -CONFIG(ctx->cache, cache_neg_rssi_threshold)) {
+        for (i = 0, reject = -1; i < ctx->ap_len && reject == -1; i++) {
+            if (ctx->beacon[i].ap.rssi < -CONFIG(ctx->cache, cache_neg_rssi_threshold) &&
+                !ctx->beacon[i].ap.property.in_cache)
+                reject = i;
+        }
+        for (i = 0; i < ctx->ap_len && reject == -1; i++) {
+            if (ctx->beacon[i].ap.rssi < -CONFIG(ctx->cache, cache_neg_rssi_threshold) &&
+                ctx->beacon[i].ap.property.in_cache && !ctx->beacon[i].ap.property.used)
+                reject = i;
+        }
+        if (reject == -1)
+            reject = 0; // reject lowest rssi value if there is no uncached or Unused beacon
         LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "Discarding beacon %d with very weak strength", 0)
-        return remove_beacon(ctx, 0);
+        return remove_beacon(ctx, reject);
     }
 
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "range: %d band range: %d.%02d",
@@ -194,9 +216,8 @@ static Sky_status_t filter_by_rssi(Sky_ctx_t *ctx)
 
     /* find AP with poorest fit to ideal rssi */
     /* always keep lowest and highest rssi */
-    /* unless all the middle candidates are in the cache */
     for (i = 1, reject = -1, worst = 0; i < ctx->ap_len - 1; i++) {
-        if (!ctx->beacon[i].ap.in_cache &&
+        if (!ctx->beacon[i].ap.property.in_cache &&
             fabs(NOMINAL_RSSI(ctx->beacon[i].ap.rssi) - ideal_rssi[i]) > worst) {
             worst = fabs(NOMINAL_RSSI(ctx->beacon[i].ap.rssi) - ideal_rssi[i]);
             reject = i;
@@ -204,18 +225,41 @@ static Sky_status_t filter_by_rssi(Sky_ctx_t *ctx)
     }
     if (reject == -1) {
         /* haven't found a beacon to remove yet due to matching cached beacons */
-        /* Throw away either lowest or highest rssi valued beacons */
-        if (!ctx->beacon[ctx->ap_len - 1].ap.in_cache && ctx->beacon[0].ap.in_cache)
+        /* Throw away either lowest or highest rssi valued beacons if not in cache */
+        if (!ctx->beacon[0].ap.property.in_cache)
+            reject = 0;
+        else if (!ctx->beacon[ctx->ap_len - 1].ap.property.in_cache)
+            reject = ctx->ap_len - 1;
+    }
+    if (reject == -1) {
+        /* haven't found a beacon to remove yet due to matching cached beacons */
+        /* Throw away Unused beacon with worst fit */
+        for (i = 1, worst = 0; i < ctx->ap_len - 1; i++) {
+            if (!ctx->beacon[i].ap.property.used &&
+                fabs(NOMINAL_RSSI(ctx->beacon[i].ap.rssi) - ideal_rssi[i]) > worst) {
+                worst = fabs(NOMINAL_RSSI(ctx->beacon[i].ap.rssi) - ideal_rssi[i]);
+                reject = i;
+            }
+        }
+    }
+    if (reject == -1) {
+        /* haven't found a beacon to remove yet due to matching cached beacons and no Unused */
+        /* Throw away either lowest or highest rssi valued beacons if not Used */
+        if (!ctx->beacon[0].ap.property.used)
+            reject = 0;
+        else if (!ctx->beacon[ctx->ap_len - 1].ap.property.used)
             reject = ctx->ap_len - 1;
         else
-            reject = 0; /* Throw away lowest rssi value */
+            reject = ctx->ap_len / 2; /* remove middle beacon (all beacons are in cache and Used) */
     }
 #if SKY_DEBUG
     for (i = 0; i < ctx->ap_len; i++) {
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "%s: %-2d, %s ideal %d.%02d fit %2d.%02d (%d)",
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "%s: %-2d %s ideal %d.%02d fit %2d.%02d (%d)",
             (reject == i) ? "remove" : "      ", i,
-            ctx->beacon[i].ap.in_cache ? "cached" : "      ", (int)ideal_rssi[i],
-            (int)fabs(round(100 * (ideal_rssi[i] - (int)ideal_rssi[i]))),
+            ctx->beacon[i].ap.property.in_cache ?
+                ctx->beacon[i].ap.property.used ? "Used  " : "Unused" :
+                "      ",
+            (int)ideal_rssi[i], (int)fabs(round(100 * (ideal_rssi[i] - (int)ideal_rssi[i]))),
             (int)fabs(NOMINAL_RSSI(ctx->beacon[i].ap.rssi) - ideal_rssi[i]), ideal_rssi[i],
             (int)fabs(
                 round(100 * (fabs(NOMINAL_RSSI(ctx->beacon[i].ap.rssi) - ideal_rssi[i]) -
@@ -261,7 +305,7 @@ static bool filter_virtual_aps(Sky_ctx_t *ctx)
     for (j = 0; j < ctx->ap_len; j++) {
         for (i = j + 1; i < ctx->ap_len; i++) {
             if ((cmp = similar(ctx->beacon[i].ap.mac, ctx->beacon[j].ap.mac)) < 0) {
-                if (ctx->beacon[j].ap.in_cache) {
+                if (ctx->beacon[j].ap.property.in_cache) {
                     rm = i;
 #if SKY_DEBUG
                     keep = j;
@@ -274,7 +318,7 @@ static bool filter_virtual_aps(Sky_ctx_t *ctx)
 #endif
                 }
             } else if (cmp > 0) {
-                if (ctx->beacon[i].ap.in_cache) {
+                if (ctx->beacon[i].ap.property.in_cache) {
                     rm = j;
 #if SKY_DEBUG
                     keep = i;
@@ -311,8 +355,9 @@ static bool filter_virtual_aps(Sky_ctx_t *ctx)
  */
 Sky_status_t add_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon_t *b, bool is_connected)
 {
-    int i = -1;
+    int i = -1, j;
     int dup = -1;
+    Beacon_t *w, *c;
 
     /* don't add any more non-AP beacons if we've already hit the limit of non-AP beacons */
     if (b->h.type != SKY_BEACON_AP &&
@@ -351,10 +396,19 @@ Sky_status_t add_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon_t *b, boo
     if (is_connected)
         ctx->connected = i;
 
-    if (b->h.type == SKY_BEACON_AP)
-        ctx->beacon[i].ap.in_cache =
-            beacon_in_cache(ctx, b, &ctx->cache->cacheline[ctx->cache->newest]);
-    else /* only filter APs */
+    /* Update the AP just added to workspace */
+    w = &ctx->beacon[i];
+    if (b->h.type == SKY_BEACON_AP) {
+        w->ap.property.in_cache =
+            beacon_in_cache(ctx, b, &ctx->cache->cacheline[ctx->cache->newest], &j);
+        /* If the added AP is in cache, copy properties */
+        c = &ctx->cache->cacheline[ctx->cache->newest].beacon[j];
+        if (w->ap.property.in_cache)
+            w->ap.property.used = c->ap.property.used;
+        else
+            w->ap.property.used = false;
+
+    } else /* only filter APs */
         return sky_return(sky_errno, SKY_ERROR_NONE);
 
     /* done if no filtering needed */
@@ -376,10 +430,11 @@ Sky_status_t add_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon_t *b, boo
  *  @param ctx Skyhook request context
  *  @param b pointer to new beacon
  *  @param cl pointer to cacheline
+ *  @param index pointer to where the index of matching beacon is saved
  *
  *  @return SKY_SUCCESS if beacon successfully added or SKY_ERROR
  */
-static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl)
+static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl, int *index)
 {
     int j;
     bool ret = false;
@@ -393,8 +448,7 @@ static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl)
         return false;
     }
 
-    /* score each cache line wrt beacon match ratio */
-    for (j = 0; ret == false && j < cl->len; j++)
+    for (j = 0; j < cl->len; j++) {
         if (b->h.type == cl->beacon[j].h.type) {
             switch (b->h.type) {
             case SKY_BEACON_AP:
@@ -442,6 +496,11 @@ static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl)
                 ret = false;
             }
         }
+        if (ret == true)
+            break;
+    }
+    if (index)
+        *index = (ret == true) ? j : -1;
     return ret;
 }
 
@@ -491,7 +550,7 @@ int find_best_match(Sky_ctx_t *ctx, bool put)
             }
 
             for (j = start; j < end; j++) {
-                if (beacon_in_cache(ctx, &ctx->beacon[j], &ctx->cache->cacheline[i])) {
+                if (beacon_in_cache(ctx, &ctx->beacon[j], &ctx->cache->cacheline[i], NULL)) {
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Beacon %d type %s matches cache %d of 0..%d",
                         j, sky_pbeacon(&ctx->beacon[j]), i, CACHE_SIZE)
                     score[i] = score[i] + 1.0;

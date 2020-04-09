@@ -330,7 +330,8 @@ Sky_status_t sky_add_ap_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uint8_t m
         rssi = -1;
     b.ap.freq = frequency;
     b.ap.rssi = rssi;
-    b.ap.in_cache = false;
+    b.ap.property.in_cache = false;
+    b.ap.property.used = false;
 
     return add_beacon(ctx, sky_errno, &b, is_connected);
 }
@@ -893,7 +894,7 @@ char *sky_pserver_status(Sky_loc_status_t status)
     return str;
 }
 
-/*! \brief returns a string which describes the meaning of Sky_beacon_type_t
+/*! \brief returns a string which describes the meaning of Sky_beacon_property_t
  *
  *  @param b beacon type
  *

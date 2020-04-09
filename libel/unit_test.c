@@ -77,7 +77,7 @@ static time_t mytime(time_t *t)
  */
 void set_mac(uint8_t *mac)
 {
-    uint8_t refs[5][MAC_SIZE] = /* clang-format off */
+    uint8_t refs[][MAC_SIZE] = /* clang-format off */
     { { 0xd4, 0x85, 0x64, 0xb2, 0xf5, 0x7e },
       { 0xe4, 0x75, 0x64, 0xb2, 0xf5, 0x7e },
       { 0xf4, 0x65, 0x64, 0xb2, 0xf5, 0x7e },
@@ -92,7 +92,7 @@ void set_mac(uint8_t *mac)
         printf("Virt MAC\n");
     } else if (rand() % 3 != 0) {
         /* rand MAC */
-        memcpy(mac, refs[rand() % 3], sizeof(refs[0]));
+        memcpy(mac, refs[rand() % sizeof(refs) / MAC_SIZE], sizeof(refs[0]));
         if (rand() % 3 == 0) {
             mac[rand() % 3] = (rand() % 256);
             printf("Rand MAC\n");
@@ -239,7 +239,6 @@ int main(int ac, char **av)
         0x7e, 0xd4, 0x85, 0x64, 0xb2 };
     uint8_t mac[MAC_SIZE] = { 0xd4, 0x85, 0x64, 0xb2, 0xf5, 0x7e };
     time_t timestamp = time(NULL);
-    uint32_t ch = 65;
     void *pstate;
     uint32_t response_size;
     Sky_beacon_type_t t;
@@ -274,22 +273,23 @@ int main(int ac, char **av)
     printf("ctx: magic:%08X size:%08X crc:%08X\n", ctx->header.magic, ctx->header.size,
         ctx->header.crc32);
 
-    for (i = 0; i < 25; i++) {
+    for (i = 0; i < sizeof(b) / sizeof(b[0]); i++) {
         b[i].ap.magic = BEACON_MAGIC;
         b[i].ap.type = SKY_BEACON_AP;
         set_mac(b[i].ap.mac);
-        b[i].ap.freq = b[i].ap.mac[0];
+        b[i].ap.freq = (rand() % 4000) + 2000;
         b[i].ap.rssi = -rand() % 128;
     }
 
-    for (i = 0; i < 25; i++) {
-        if (sky_add_ap_beacon(
-                ctx, &sky_errno, b[i].ap.mac, timestamp - (rand() % 3), b[i].ap.rssi, ch, 1)) {
+    for (i = 0; i < sizeof(b) / sizeof(b[0]); i++) {
+        if (sky_add_ap_beacon(ctx, &sky_errno, b[i].ap.mac, timestamp - (rand() % 3), b[i].ap.rssi,
+                b[i].ap.freq, 1)) {
             printf("sky_add_ap_beacon sky_errno contains '%s'\n", sky_perror(sky_errno));
         } else {
-            printf("Added Test Beacon % 2d: Type: %d, MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %d\n",
+            printf(
+                "Added Test Beacon % 2d: Type: AP(%d), MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz\n",
                 i, b[i].ap.type, b[i].ap.mac[0], b[i].ap.mac[1], b[i].ap.mac[2], b[i].ap.mac[3],
-                b[i].ap.mac[4], b[i].ap.mac[5], b[i].ap.rssi);
+                b[i].ap.mac[4], b[i].ap.mac[5], b[i].ap.rssi, b[i].ap.freq);
         }
     }
 
@@ -309,7 +309,7 @@ int main(int ac, char **av)
             printf("sky_add_nbiot_beacon sky_errno contains '%s'\n", sky_perror(sky_errno));
         } else {
             printf(
-                "Added Test Beacon % 2d: Type: %d, mcc: %d, mnc: %d, e_cellid: %d, tac: %d, rssi: %d\n",
+                "Added Test Beacon % 2d: Type: NB-IoT(%d), mcc: %d, mnc: %d, e_cellid: %d, tac: %d, rssi: %d\n",
                 i, b[i].nbiot.type, b[i].nbiot.mcc, b[i].nbiot.mnc, b[i].nbiot.e_cellid,
                 b[i].nbiot.tac, b[i].nbiot.rssi);
         }
@@ -331,7 +331,7 @@ int main(int ac, char **av)
             printf("sky_add_gsm_beacon sky_errno contains '%s'\n", sky_perror(sky_errno));
         } else {
             printf(
-                "Added Test Beacon % 2d: Type: %d, lac: %d, ui: %d, mcc: %d, mnc: %d, rssi: %d\n",
+                "Added Test Beacon % 2d: Type: GSM(%d), lac: %d, ui: %d, mcc: %d, mnc: %d, rssi: %d\n",
                 i, b[i].gsm.type, b[i].gsm.lac, b[i].gsm.ci, b[i].gsm.mcc, b[i].gsm.mnc,
                 b[i].gsm.rssi);
         }
@@ -383,6 +383,7 @@ int main(int ac, char **av)
                 printf("get_ap_rssi:      %d, %lld\n", i, (long long)get_ap_rssi(ctx, i));
                 printf("get_ap_is_connected:      %d, %d\n", i, get_ap_is_connected(ctx, i));
                 printf("get_ap_age:      %d, %lld\n", i, (long long)get_ap_age(ctx, i));
+                ctx->beacon[i].ap.property.used = (rand() % 9 > 2);
             }
         if (t == SKY_BEACON_GSM)
             for (i--; i >= 0; i--) {

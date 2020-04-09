@@ -474,7 +474,7 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
 
     pb_istream_t istream;
 
-    int i;
+    int a, i;
 
     // We assume that buf contains the response message in its entirety. (Since
     // the server closes the connection after sending the response, the client
@@ -489,16 +489,13 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
 
     buf += 1;
 
-    printf("deserialize_response: (buf_len < 1 + hdr_size), %d\n", (buf_len < 1 + hdr_size));
     if (buf_len < 1 + hdr_size)
         return -1;
 
     istream = pb_istream_from_buffer(buf, hdr_size);
 
-    if (!pb_decode(&istream, RsHeader_fields, &header)) {
-        printf("pb_decode failed\n");
+    if (!pb_decode(&istream, RsHeader_fields, &header))
         return -1;
-    }
 
     memset(loc, 0, sizeof(*loc));
     loc->location_status = (Sky_loc_status_t)header.status;
@@ -507,17 +504,13 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
         buf += hdr_size;
 
         // Deserialize the crypto_info.
-        if (buf_len < 1 + hdr_size + header.crypto_info_length + header.rs_length) {
-            printf("buf_len failed Deserialize the crypto_info\n");
+        if (buf_len < 1 + hdr_size + header.crypto_info_length + header.rs_length)
             return -1;
-        }
 
         istream = pb_istream_from_buffer(buf, header.crypto_info_length);
 
-        if (!pb_decode(&istream, CryptoInfo_fields, &crypto_info)) {
-            printf("pb_decode failed\n");
+        if (!pb_decode(&istream, CryptoInfo_fields, &crypto_info))
             return -1;
-        }
 
         buf += header.crypto_info_length;
 
@@ -529,19 +522,23 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
         // Deserialize the response body.
         istream = pb_istream_from_buffer(buf, header.rs_length - crypto_info.aes_padding_length);
 
-        if (!pb_decode(&istream, Rs_fields, &rs)) {
-            printf("pb_decode 2 failed\n");
+        if (!pb_decode(&istream, Rs_fields, &rs))
             return -1;
-        } else {
-            loc->lat = rs.lat;
-            loc->lon = rs.lon;
-            loc->hpe = (uint16_t)rs.hpe;
-            loc->location_source = (Sky_loc_source_t)rs.source;
-            printf("Used: len %d - ", rs.used_aps.size);
-            for (i = 0; i < rs.used_aps.size; i++)
-                printf("%02X ", rs.used_aps.bytes[i]);
-            printf("\n");
+
+        loc->lat = rs.lat;
+        loc->lon = rs.lon;
+        loc->hpe = (uint16_t)rs.hpe;
+        loc->location_source = (Sky_loc_source_t)rs.source;
+        // Extract Used info for each AP from the Used_aps bytes
+        for (a = 0; a < ctx->ap_len; a++) {
+            i = rs.used_aps.size - 1 - (a / 8);
+            // LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Used: AP %d, Byte: 0x%02X idx: %d:%d", a, rs.used_aps.bytes[i], i, (a % 8))
+            if (a < rs.used_aps.size * 8)
+                ctx->beacon[a].ap.property.used = rs.used_aps.bytes[i] & (1 << (a % 8)) ? 1 : 0;
+            else
+                ctx->beacon[a].ap.property.used = 0;
         }
+
         if (apply_config_overrides(ctx->cache, &rs)) {
             if (ctx->logf && SKY_LOG_LEVEL_DEBUG <= ctx->min_level)
                 (*ctx->logf)(SKY_LOG_LEVEL_DEBUG, "New config overrides received from server");
