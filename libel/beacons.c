@@ -31,6 +31,8 @@
 #define SKY_LIBEL 1
 #include "libel.h"
 
+/* #define VERBOSE_DEBUG 1 */
+
 #define MIN(x, y) ((x) > (y) ? (y) : (x))
 #define NOMINAL_RSSI(b) ((b) == -1 ? (-90) : (b))
 #define PUT_IN_CACHE true
@@ -135,7 +137,7 @@ static Sky_status_t insert_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon
     /* report back the position beacon was added */
     if (index != NULL)
         *index = i;
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Beacon type %s inserted idx: %d", sky_pbeacon(b), i);
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Beacon type %s inserted idx: %d", sky_pbeacon(b), i)
 
     if (b->h.type == SKY_BEACON_AP)
         ctx->ap_len++;
@@ -440,7 +442,7 @@ static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl, in
     bool ret = false;
 
     if (!cl || !b || !ctx) {
-        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad params");
+        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad params")
         return false;
     }
 
@@ -504,113 +506,210 @@ static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl, in
     return ret;
 }
 
+/*! \brief count number of cached APs in workspace relative to a cacheline
+ *
+ *  @param ctx Skyhook request context
+ *  @param cl the cacheline to count in, otherwise count in workspace
+ *
+ *  @return number of used APs or -1 for fatal error
+ */
+static int count_aps_in_cacheline(Sky_ctx_t *ctx, Sky_cacheline_t *cl)
+{
+    int num_aps_cached = 0;
+    int j;
+
+    if (!ctx || !cl)
+        return -1;
+    for (j = 0; j < ctx->ap_len; j++) {
+        if (beacon_in_cache(ctx, &ctx->beacon[j], cl, NULL))
+            num_aps_cached++;
+    }
+#ifdef VERBOSE_DEBUG
+    LOGFMT(
+        ctx, SKY_LOG_LEVEL_DEBUG, "%d APs in cache %d", num_aps_cached, cl - ctx->cache->cacheline)
+#endif
+    return num_aps_cached;
+}
+
+/*! \brief count number of used APs in workspace relative to a cacheline
+ *
+ *  @param ctx Skyhook request context
+ *  @param cl the cacheline to count in, otherwise count in workspace
+ *
+ *  @return number of used APs or -1 for fatal error
+ */
+static int count_used_aps_in_workspace(Sky_ctx_t *ctx, Sky_cacheline_t *cl)
+{
+    int num_aps_used = 0;
+    int j, index;
+
+    if (!ctx || !cl)
+        return -1;
+    for (j = 0; j < ctx->ap_len; j++) {
+        beacon_in_cache(ctx, &ctx->beacon[j], cl, &index);
+        if (index != -1 && cl->beacon[index].ap.property.used)
+            num_aps_used++;
+    }
+#ifdef VERBOSE_DEBUG
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "%d used APs in workspace", num_aps_used)
+#endif
+    return num_aps_used;
+}
+
+/*! \brief count number of used AP in cachelines
+ *
+ *  @param ctx Skyhook request context
+ *  @param cl the cacheline to count in, otherwise count in workspace
+ *
+ *  @return number of used APs or -1 for fatal error
+ */
+static int count_used_aps_in_cacheline(Sky_ctx_t *ctx, Sky_cacheline_t *cl)
+{
+    int num_aps_used = 0;
+    int j;
+
+    if (!ctx || !cl)
+        return -1;
+    for (j = 0; j < cl->ap_len; j++) {
+        if (cl->beacon[j].ap.property.used)
+            num_aps_used++;
+    }
+#ifdef VERBOSE_DEBUG
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "%d used APs in cache", num_aps_used)
+#endif
+    return num_aps_used;
+}
+
 /*! \brief find cache entry with best match
  *  if beacon is AP, filter
  *
  *  @param ctx Skyhook request context
- *  @param put boolean which reflects put or get from cache
  *
  *  @return index of best match or empty cacheline or -1
  */
-int find_best_match(Sky_ctx_t *ctx, bool put)
+int find_best_match(Sky_ctx_t *ctx)
 {
-    int i, j, start, end;
-    float ratio[CACHE_SIZE];
-    int score[CACHE_SIZE];
-    float bestratio = 0;
-    int bestscore = 0;
-    int bestc = -1;
+    int i, j, err, score, threshold;
+    float ratio, bestratio = -1.0, bestputratio = -1.0;
+    int num_aps_used = 0;
+    int bestc = -1, bestput = -1;
+    int bestthresh = 0;
 
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "%s", put ? "for save to cache" : "for get from cache")
+    dump_cache(ctx);
     dump_workspace(ctx);
 
-    /* score each cache line wrt beacon match ratio */
-    for (i = 0; i < CACHE_SIZE; i++) {
-        ratio[i] = score[i] = 0;
+    /* initialize best cacheline for putting to cache to any empty cacheline */
+    for (i = 0, err = false; i < CACHE_SIZE; i++) {
+        /* if cacheline is old, mark it empty */
         if (ctx->cache->cacheline[i].time != 0 &&
             ((uint32_t)(*ctx->gettime)(NULL)-ctx->cache->cacheline[i].time) >
                 (CONFIG(ctx->cache, cache_age_threshold) * SECONDS_IN_HOUR)) {
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache line %d expired", i);
+            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache line %d expired", i)
             ctx->cache->cacheline[i].time = 0;
         }
-        if (put && (ctx->cache->cacheline[i].time == 0)) {
-            /* looking for match for put, empty cacheline = 1st choice */
-            score[i] = CONFIG(ctx->cache, total_beacons) * 2;
-        } else if (!put && ctx->cache->cacheline[i].time == 0) {
-            /* looking for match for get, ignore empty cache */
+        if (ctx->cache->cacheline[i].time == 0) {
+            if (bestputratio < 1.0) {
+                bestput = i;
+                bestputratio = 1.0;
+            }
+        }
+    }
+
+    /* score each cache line wrt beacon match ratio */
+    for (i = 0, err = false; i < CACHE_SIZE; i++) {
+        threshold = ratio = score = 0;
+        if (ctx->cache->cacheline[i].time == 0) {
+            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache: %d: Score 0 for empty cacheline", i)
             continue;
         } else {
-            /* Non empty cacheline - count matching beacons */
-            if (ctx->ap_len) {
-                start = 0;
-                end = ctx->ap_len;
-            } else {
-                start = ctx->ap_len - 1;
-                end = ctx->len;
+            /* count number of used APs */
+            if ((num_aps_used = count_used_aps_in_workspace(ctx, &ctx->cache->cacheline[i])) < 0) {
+                err = true;
+                break;
             }
+            if (num_aps_used) {
+                /* there are some significant APs */
+                if (num_aps_used < CONFIG(ctx->cache, cache_beacon_threshold)) {
+                    /* if there are only a few significant APs, Score based on ALL APs */
+                    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache: %d: Score based on ALL APs", i)
 
-            for (j = start; j < end; j++) {
-                if (beacon_in_cache(ctx, &ctx->beacon[j], &ctx->cache->cacheline[i], NULL)) {
-                    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Beacon %d type %s matches cache %d of 0..%d",
-                        j, sky_pbeacon(&ctx->beacon[j]), i, CACHE_SIZE)
-                    score[i] = score[i] + 1.0;
+                    if ((score = count_aps_in_cacheline(ctx, &ctx->cache->cacheline[i])) < 0) {
+                        err = true;
+                        break;
+                    }
+                    int unionAB = (ctx->ap_len +
+                                   MIN(ctx->cache->cacheline[i].ap_len,
+                                       CONFIG(ctx->cache, max_ap_beacons)) -
+                                   score);
+                    threshold = 33 + (2 * CONFIG(ctx->cache, cache_match_threshold)) / 3;
+                    ratio = (float)score / unionAB;
+                    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache: %d: score %d (%d/%d) vs %d", i,
+                        (int)round(ratio * 100), score, unionAB, threshold)
+                } else {
+                    /* there are are enough significant APs, Score based on just Used APs */
+                    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache: %d: Score based on just Used APs", i)
+
+                    int unionAB = count_used_aps_in_cacheline(ctx, &ctx->cache->cacheline[i]);
+                    if (unionAB < 0) {
+                        err = true;
+                        break;
+                    }
+                    ratio = (float)num_aps_used / unionAB;
+                    threshold = CONFIG(ctx->cache, cache_match_threshold);
+                    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d: score %d (%d/%d) vs %d", i,
+                        (int)round(ratio * 100), num_aps_used, unionAB, threshold)
                 }
+            } else {
+                /* score cachelines based on cell */
+                LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache %d Score based on cell", i)
+
+                for (j = ctx->ap_len; j < ctx->len; j++) {
+                    if (beacon_in_cache(ctx, &ctx->beacon[j], &ctx->cache->cacheline[i], NULL)) {
+                        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache %d: cell %d type %s matches", i, j,
+                            sky_pbeacon(&ctx->beacon[j]))
+                        score = score + 1;
+                    }
+                }
+                ratio = (score == ctx->len - ctx->ap_len) ? 100.0 : 0.0;
+                threshold = CONFIG(ctx->cache, cache_match_threshold);
+                LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d: Score %d (%d/%d) vs %d", i,
+                    (int)round(ratio * 100), score, ctx->len - ctx->ap_len, threshold)
             }
         }
-    }
-
-    for (i = 0; i < CACHE_SIZE; i++) {
-        if (score[i] == CONFIG(ctx->cache, total_beacons) * 2) {
-            ratio[i] = 1.0;
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d: fill empty cacheline", i)
-        } else if (ctx->ap_len && ctx->cache->cacheline[i].ap_len) {
-            // score = intersection(A, B) / union(A, B)
-            int unionAB =
-                (ctx->ap_len +
-                    MIN(ctx->cache->cacheline[i].ap_len, CONFIG(ctx->cache, max_ap_beacons)) -
-                    score[i]);
-            ratio[i] = (float)score[i] / unionAB;
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d: score %d (%d/%d)", i,
-                (int)round(ratio[i] * 100), score[i], unionAB)
-
-        } else if (ctx->len - ctx->ap_len &&
-                   ctx->cache->cacheline[i].len - ctx->cache->cacheline[i].ap_len) {
-            // if all cell beacons match
-            ratio[i] = (score[i] == ctx->len - ctx->ap_len) ? 100.0 : 0.0;
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d: all %d cell beacons match",
-                ctx->len - ctx->ap_len)
+        if (ratio > bestputratio) {
+            bestput = i;
+            bestputratio = ratio;
         }
-
-        if (ratio[i] > bestratio) {
-            bestratio = ratio[i];
-            bestscore = score[i];
+        if (ratio > bestratio) {
+            if (bestratio > 0.0)
+                LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
+                    "Found better match in cache %d of 0..%d score %d (vs %d)", i, CACHE_SIZE - 1,
+                    (int)round(ratio * 100), threshold)
             bestc = i;
+            bestratio = ratio;
+            bestthresh = threshold;
         }
+        if (ratio * 100 > threshold)
+            break;
+    }
+    if (err) {
+        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad parameters counting APs")
+        return -1;
     }
 
-    /* if match is for get, must meet threshold */
-    if (!put) {
-        if (ctx->len <= CONFIG(ctx->cache, cache_beacon_threshold) && bestscore == ctx->len) {
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                "Only %d beacons; pick cache %d of 0..%d score %d (vs %d)", ctx->len, bestc,
-                CACHE_SIZE, (int)round(ratio[bestc] * 100),
-                CONFIG(ctx->cache, cache_beacon_threshold))
-            return bestc;
-        } else if (ctx->len > CONFIG(ctx->cache, cache_beacon_threshold) &&
-                   bestratio * 100 > CONFIG(ctx->cache, cache_match_threshold)) {
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                "location in cache, pick cache %d of 0..%d score %d (vs %d)", bestc, CACHE_SIZE - 1,
-                (int)round(ratio[bestc] * 100), CONFIG(ctx->cache, cache_match_threshold))
-            return bestc;
-        }
-    } else if (bestc >= 0) { /* match is for put */
+    /* make a note of the best match used by add_to_cache */
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Best cacheline for put to cache: %d of 0..%d score %d",
+        bestput, CACHE_SIZE - 1, (int)round(bestputratio * 100))
+    ctx->bestput = bestput;
+
+    if (bestratio * 100 > bestthresh) {
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-            "save location in best cache, %d of 0..%d score %d (vs %d)", bestc, CACHE_SIZE - 1,
-            (int)round(ratio[bestc] * 100), CONFIG(ctx->cache, cache_match_threshold))
+            "location in cache, pick cache %d of 0..%d score %d (vs %d)", bestc, CACHE_SIZE - 1,
+            (int)round(bestratio * 100), bestthresh)
         return bestc;
     }
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache match failed. Best score %d (vs %d)",
-        (int)round(bestratio * 100), CONFIG(ctx->cache, cache_match_threshold))
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache match failed. Cache %d, best score %d (vs %d)", bestc,
+        (int)round(bestratio * 100), bestthresh)
     return -1;
 }
 
@@ -635,7 +734,7 @@ static int find_oldest(Sky_ctx_t *ctx)
             oldestc = i;
         }
     }
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cacheline %d oldest time %d", oldestc, oldest);
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cacheline %d oldest time %d", oldestc, oldest)
     return oldestc;
 }
 
@@ -658,7 +757,7 @@ static void update_newest_cacheline(Sky_ctx_t *ctx)
     }
     if (newest) {
         ctx->cache->newest = idx;
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cacheline %d is newest", idx);
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cacheline %d is newest", idx)
     }
 }
 
@@ -671,7 +770,7 @@ static void update_newest_cacheline(Sky_ctx_t *ctx)
  */
 Sky_status_t add_to_cache(Sky_ctx_t *ctx, Sky_location_t *loc)
 {
-    int i = -1;
+    int i = ctx->bestput;
     int j;
     uint32_t now = (*ctx->gettime)(NULL);
 
@@ -689,23 +788,20 @@ Sky_status_t add_to_cache(Sky_ctx_t *ctx, Sky_location_t *loc)
     /*    yes - add entry here */
     /* else find oldest cache entry */
     /*    yes - add entryu here */
-    if ((i = find_best_match(ctx, PUT_IN_CACHE)) < 0) {
+    if (i < 0) {
         i = find_oldest(ctx);
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "find_oldest chose cache %d of 0..%d", i, CACHE_SIZE)
-    } else {
-        if (loc->location_status != SKY_LOCATION_STATUS_SUCCESS) {
-            ctx->cache->cacheline[i].time = 0; /* clear cacheline */
-            update_newest_cacheline(ctx);
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                "find_best_match found cache match %d of 0..%d, but cleared", i, CACHE_SIZE);
-        } else
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "find_best_match found cache match %d of 0..%d", i,
-                CACHE_SIZE);
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "find_oldest chose cache %d of 0..%d", i, CACHE_SIZE - 1)
     }
     if (loc->location_status != SKY_LOCATION_STATUS_SUCCESS) {
         LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "Won't add unknown location to cache")
+        ctx->cache->cacheline[i].time = 0; /* clear cacheline */
+        update_newest_cacheline(ctx);
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "clearing cache %d of 0..%d", i, CACHE_SIZE - 1)
         return SKY_ERROR;
-    }
+    } else if (ctx->cache->cacheline[i].time == 0)
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Saving to empty cache %d of 0..%d", i, CACHE_SIZE - 1)
+    else
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Saving to cache %d of 0..%d", i, CACHE_SIZE - 1)
     ctx->cache->cacheline[i].len = ctx->len;
     ctx->cache->cacheline[i].ap_len = ctx->ap_len;
     ctx->cache->cacheline[i].loc = *loc;
@@ -719,6 +815,7 @@ Sky_status_t add_to_cache(Sky_ctx_t *ctx, Sky_location_t *loc)
 /*! \brief get location from cache
  *
  *  @param ctx Skyhook request context
+ *  @param best Where to save best match, can be used to save to cache
  *
  *  @return cacheline index or -1
  */
@@ -735,5 +832,5 @@ int get_from_cache(Sky_ctx_t *ctx)
         LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Don't have good time of day!")
         return SKY_ERROR;
     }
-    return find_best_match(ctx, GET_FROM_CACHE);
+    return find_best_match(ctx);
 }

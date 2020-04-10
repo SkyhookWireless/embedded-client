@@ -38,7 +38,8 @@
 
 /*! \brief The percentage of beacons that must match in a cached scan/location
  */
-#define CACHE_MATCH_THRESHOLD 50
+#define CACHE_MATCH_THRESHOLD_USED 50 // Score needed when matching just Used APs
+#define CACHE_MATCH_THRESHOLD_ALL 75 // Score needed when matching Used and Unused APs
 
 /*! \brief The maximum age (in hr) that a cached value is concidered useful
  */
@@ -57,7 +58,7 @@
 
 /*! \brief The number of entries in the scan/response cache
  */
-#define CACHE_SIZE 1
+#define CACHE_SIZE 3
 
 /*! \brief The maximum space the dynamic configuration parameters may take up in bytes
  */

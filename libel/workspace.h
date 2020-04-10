@@ -80,6 +80,7 @@ typedef struct sky_ctx {
     int16_t connected; /* which beacon is conneted (-1 == none) */
     Gps_t gps; /* GNSS info */
     /* Assume worst case is that beacons and gps info takes twice the bare structure size */
+    int16_t bestput; /* cacheline with best match for saving */
     Sky_cache_t *cache;
 } Sky_ctx_t;
 #endif

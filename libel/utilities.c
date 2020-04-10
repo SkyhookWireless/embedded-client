@@ -463,7 +463,7 @@ void config_defaults(Sky_cache_t *c)
     if (CONFIG(c, max_ap_beacons) == 0)
         CONFIG(c, max_ap_beacons) = MAX_AP_BEACONS;
     if (CONFIG(c, cache_match_threshold) == 0)
-        CONFIG(c, cache_match_threshold) = CACHE_MATCH_THRESHOLD;
+        CONFIG(c, cache_match_threshold) = CACHE_MATCH_THRESHOLD_USED;
     if (CONFIG(c, cache_age_threshold) == 0)
         CONFIG(c, cache_age_threshold) = CACHE_AGE_THRESHOLD;
     if (CONFIG(c, cache_beacon_threshold) == 0)
