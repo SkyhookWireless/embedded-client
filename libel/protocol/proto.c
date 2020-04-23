@@ -484,18 +484,24 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
     // Deserialize the header. First byte of input buffer represents length of
     // header.
     //
-    if (buf_len < 1)
+    if (buf_len < 1) {
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: buf_len < 1")
         return -1;
+    }
 
     buf += 1;
 
-    if (buf_len < 1 + hdr_size)
+    if (buf_len < 1 + hdr_size) {
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: buf_len < 1 + hdr_size")
         return -1;
+    }
 
     istream = pb_istream_from_buffer(buf, hdr_size);
 
-    if (!pb_decode(&istream, RsHeader_fields, &header))
+    if (!pb_decode(&istream, RsHeader_fields, &header)) {
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: pb_decode for header");
         return -1;
+    }
 
     memset(loc, 0, sizeof(*loc));
     loc->location_status = (Sky_loc_status_t)header.status;
@@ -504,13 +510,17 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
         buf += hdr_size;
 
         // Deserialize the crypto_info.
-        if (buf_len < 1 + hdr_size + header.crypto_info_length + header.rs_length)
+        if (buf_len < 1 + hdr_size + header.crypto_info_length + header.rs_length) {
+            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: buf_len <...")
             return -1;
+        }
 
         istream = pb_istream_from_buffer(buf, header.crypto_info_length);
 
-        if (!pb_decode(&istream, CryptoInfo_fields, &crypto_info))
+        if (!pb_decode(&istream, CryptoInfo_fields, &crypto_info)) {
+            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: pb_decode for crypto");
             return -1;
+        }
 
         buf += header.crypto_info_length;
 
@@ -522,8 +532,10 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
         // Deserialize the response body.
         istream = pb_istream_from_buffer(buf, header.rs_length - crypto_info.aes_padding_length);
 
-        if (!pb_decode(&istream, Rs_fields, &rs))
+        if (!pb_decode(&istream, Rs_fields, &rs)) {
+            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: pb_decode for body");
             return -1;
+        }
 
         loc->lat = rs.lat;
         loc->lon = rs.lon;

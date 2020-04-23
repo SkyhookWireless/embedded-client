@@ -80,17 +80,19 @@ void set_mac(uint8_t *mac)
     uint8_t refs[][MAC_SIZE] = /* clang-format off */
     { { 0xd4, 0x85, 0x64, 0xb2, 0xf5, 0x7e },
       { 0xe4, 0x75, 0x64, 0xb2, 0xf5, 0x7e },
+      { 0xc2, 0x64, 0x64, 0xb2, 0xf5, 0x7e },
+      { 0x13, 0x23, 0x64, 0xb2, 0xf5, 0x7e },
       { 0xf4, 0x65, 0x64, 0xb2, 0xf5, 0x7e },
       { 0x14, 0x55, 0x64, 0xb2, 0xf5, 0x7e },
       { 0x24, 0x45, 0x64, 0xb2, 0xf5, 0x7e } };
     /* clang-format on */
 
-    if (rand() % 3 == 0) {
+    if (rand() % 5 == 4) {
         /* Virtual MAC */
         memcpy(mac, refs[0], sizeof(refs[0]));
         mac[rand() % 2 + 4] ^= (0x01 << (rand() % 8));
         printf("Virt MAC\n");
-    } else if (rand() % 3 != 0) {
+    } else if (rand() % 5 != 0) {
         /* rand MAC */
         memcpy(mac, refs[rand() % sizeof(refs) / MAC_SIZE], sizeof(refs[0]));
         if (rand() % 3 == 0) {
@@ -184,8 +186,8 @@ void *nv_cache(void)
                 if (validate_cache(&nv_space, &logger)) {
                     printf("validate_cache: Restoring Cache\n");
                     /* Randomize if restoring cache from previous run */
-                    srand((unsigned)beacons_in_cache_rssi(&nv_space));
-                    printf("Rand( %d )\n", beacons_in_cache_rssi(&nv_space));
+                    // srand((unsigned)beacons_in_cache_rssi(&nv_space));
+                    // printf("Rand( %d )\n", beacons_in_cache_rssi(&nv_space));
                     return &nv_space;
                 } else
                     printf("validate_cache: false\n");
@@ -242,8 +244,10 @@ int main(int ac, char **av)
     void *pstate;
     uint32_t response_size;
     Sky_beacon_type_t t;
-    Beacon_t b[25];
+    Beacon_t b[50];
     Sky_location_t loc;
+
+    srand(time(NULL));
 
     if (sky_open(&sky_errno, mac /* device_id */, MAC_SIZE, 1, aes_key, nv_cache(),
             SKY_LOG_LEVEL_ALL, &logger, NULL, &mytime) == SKY_ERROR) {
@@ -383,7 +387,7 @@ int main(int ac, char **av)
                 printf("get_ap_rssi:      %d, %lld\n", i, (long long)get_ap_rssi(ctx, i));
                 printf("get_ap_is_connected:      %d, %d\n", i, get_ap_is_connected(ctx, i));
                 printf("get_ap_age:      %d, %lld\n", i, (long long)get_ap_age(ctx, i));
-                ctx->beacon[i].ap.property.used = (rand() % 9 > 2);
+                ctx->beacon[i].ap.property.used = (rand() % 9 > 3);
             }
         if (t == SKY_BEACON_GSM)
             for (i--; i >= 0; i--) {

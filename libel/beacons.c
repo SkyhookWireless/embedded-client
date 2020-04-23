@@ -345,8 +345,23 @@ static bool filter_virtual_aps(Sky_ctx_t *ctx)
     return false;
 }
 
-/*! \brief add beacon to list
- *  if beacon is AP, filter
+/*! \brief add beacon to list in workspace context
+ *
+ *   if beacon is not AP and workspace is full (of non-AP), error
+ *   if beacon is AP,
+ *    . reject a duplicate
+ *    . for duplicates, keep newest and strongest
+ *     
+ *   Insert new beacon in workspace
+ *    . Add APs in order based on lowest to highest rssi value
+ *    . Add cells after APs
+ *
+ *   If AP just added is known in cache,
+ *    . set cached and copy Used property from cache
+ *
+ *   If AP just added fills workspace, remove one AP,
+ *    . Remove one virtual AP if there is a match
+ *    . If haven't removed one AP, remove one based on rssi distribution
  *
  *  @param ctx Skyhook request context
  *  @param sky_errno skyErrno is set to the error code
@@ -357,7 +372,7 @@ static bool filter_virtual_aps(Sky_ctx_t *ctx)
  */
 Sky_status_t add_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon_t *b, bool is_connected)
 {
-    int i = -1, j;
+    int i = -1, j = 0;
     int dup = -1;
     Beacon_t *w, *c;
 
@@ -429,12 +444,17 @@ Sky_status_t add_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon_t *b, boo
 
 /*! \brief check if a beacon is in a cacheline
  *
+ *   Scan all beacons in the cacheline. If the type matches the given beacon, compare
+ *   the appropriate attributes. If the given beacon is found in the cacheline,
+ *   true is returned otherwise false. If index is not NULL, the index of the matching
+ *   beacon in the cacheline is saved or -1 if beacon was not found.
+ *
  *  @param ctx Skyhook request context
  *  @param b pointer to new beacon
  *  @param cl pointer to cacheline
  *  @param index pointer to where the index of matching beacon is saved
  *
- *  @return SKY_SUCCESS if beacon successfully added or SKY_ERROR
+ *  @return true if beacon successfully found or false
  */
 static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl, int *index)
 {
@@ -580,8 +600,19 @@ static int count_used_aps_in_cacheline(Sky_ctx_t *ctx, Sky_cacheline_t *cl)
     return num_aps_used;
 }
 
-/*! \brief find cache entry with best match
- *  if beacon is AP, filter
+/*! \brief find cache entry with a match to workspace
+ *
+ *   Expire any old cachelines
+ *   Compare each cacheline with the workspace beacons:
+ *    . If workspace has enough Used APs, compare them with low threshold
+ *    . If just a few APs, compare all APs with higher threshold
+ *    . If no APs, compare cells for 100% match
+ *
+ *   If any cacheline score meets threshold, accept it.
+ *   While searching, keep track of best cacheline to
+ *   save a new server response. An empty cacheline is
+ *   best, a good match is next, oldest is the fall back.
+ *   Best cacheline for save is saved in the workspace context.
  *
  *  @param ctx Skyhook request context
  *
@@ -598,7 +629,7 @@ int find_best_match(Sky_ctx_t *ctx)
     dump_cache(ctx);
     dump_workspace(ctx);
 
-    /* initialize best cacheline for putting to cache to any empty cacheline */
+    /* expire old cachelines and note first empty cacheline as best line to save to */
     for (i = 0, err = false; i < CACHE_SIZE; i++) {
         /* if cacheline is old, mark it empty */
         if (ctx->cache->cacheline[i].time != 0 &&
@@ -607,6 +638,7 @@ int find_best_match(Sky_ctx_t *ctx)
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache line %d expired", i)
             ctx->cache->cacheline[i].time = 0;
         }
+        /* if line is empty and it is the first one, remember it */
         if (ctx->cache->cacheline[i].time == 0) {
             if (bestputratio < 1.0) {
                 bestput = i;
@@ -714,7 +746,6 @@ int find_best_match(Sky_ctx_t *ctx)
 }
 
 /*! \brief find cache entry with oldest entry
- *  if beacon is AP, filter
  *
  *  @param ctx Skyhook request context
  *
@@ -763,6 +794,9 @@ static void update_newest_cacheline(Sky_ctx_t *ctx)
 
 /*! \brief add location to cache
  *
+ *   The location is saved in the cacheline indicated by bestput (set by find_best_match)
+ *   unless this is -1, in which case, location is saved in oldest cacheline.
+ *
  *  @param ctx Skyhook request context
  *  @param loc pointer to location info
  *
@@ -773,6 +807,7 @@ Sky_status_t add_to_cache(Sky_ctx_t *ctx, Sky_location_t *loc)
     int i = ctx->bestput;
     int j;
     uint32_t now = (*ctx->gettime)(NULL);
+    Sky_cacheline_t *cl;
 
     if (CACHE_SIZE < 1) {
         return SKY_SUCCESS;
@@ -792,23 +827,24 @@ Sky_status_t add_to_cache(Sky_ctx_t *ctx, Sky_location_t *loc)
         i = find_oldest(ctx);
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "find_oldest chose cache %d of 0..%d", i, CACHE_SIZE - 1)
     }
+    cl = &ctx->cache->cacheline[i];
     if (loc->location_status != SKY_LOCATION_STATUS_SUCCESS) {
         LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "Won't add unknown location to cache")
-        ctx->cache->cacheline[i].time = 0; /* clear cacheline */
+        cl->time = 0; /* clear cacheline */
         update_newest_cacheline(ctx);
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "clearing cache %d of 0..%d", i, CACHE_SIZE - 1)
         return SKY_ERROR;
-    } else if (ctx->cache->cacheline[i].time == 0)
+    } else if (cl->time == 0)
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Saving to empty cache %d of 0..%d", i, CACHE_SIZE - 1)
     else
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Saving to cache %d of 0..%d", i, CACHE_SIZE - 1)
-    ctx->cache->cacheline[i].len = ctx->len;
-    ctx->cache->cacheline[i].ap_len = ctx->ap_len;
-    ctx->cache->cacheline[i].loc = *loc;
-    ctx->cache->cacheline[i].time = now;
+    cl->len = ctx->len;
+    cl->ap_len = ctx->ap_len;
+    cl->loc = *loc;
+    cl->time = now;
     ctx->cache->newest = i;
     for (j = 0; j < CONFIG(ctx->cache, total_beacons); j++)
-        ctx->cache->cacheline[i].beacon[j] = ctx->beacon[j];
+        cl->beacon[j] = ctx->beacon[j];
     return SKY_SUCCESS;
 }
 
