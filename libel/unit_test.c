@@ -77,6 +77,7 @@ static time_t mytime(time_t *t)
  */
 void set_mac(uint8_t *mac)
 {
+    char *s;
     uint8_t refs[][MAC_SIZE] = /* clang-format off */
     { { 0xd4, 0x85, 0x64, 0xb2, 0xf5, 0x7e },
       { 0xe4, 0x75, 0x64, 0xb2, 0xf5, 0x7e },
@@ -87,19 +88,20 @@ void set_mac(uint8_t *mac)
       { 0x24, 0x45, 0x64, 0xb2, 0xf5, 0x7e } };
     /* clang-format on */
 
-    if (rand() % 5 == 4) {
+    if (rand() % 3 == 0) {
         /* Virtual MAC */
         memcpy(mac, refs[0], sizeof(refs[0]));
-        mac[rand() % 2 + 4] ^= (0x01 << (rand() % 8));
-        printf("Virt MAC\n");
+        if (rand() % 3 > 0)
+            mac[rand() % 2 + 4] ^= (0x01 << (rand() % 8));
+        s = "Virt MAC\n";
     } else if (rand() % 5 != 0) {
         /* rand MAC */
         memcpy(mac, refs[rand() % sizeof(refs) / MAC_SIZE], sizeof(refs[0]));
-        if (rand() % 3 == 0) {
+        if (rand() % 2 == 0) {
             mac[rand() % 3] = (rand() % 256);
-            printf("Rand MAC\n");
+            s = "Rand MAC\n";
         } else {
-            printf("Known MAC\n");
+            s = "Known MAC\n";
         }
     } else {
         /* Non Virtual MAC */
@@ -107,8 +109,10 @@ void set_mac(uint8_t *mac)
         memcpy(mac, ref, sizeof(ref));
         mac[rand() % 3] = (rand() % 256);
         mac[rand() % 3 + 3] = (rand() % 256);
-        printf("Non-Virt MAC\n");
+        s = "Non-Virt MAC\n";
     }
+    printf("Set MAC %02X:%02X:%02X:%02X:%02X:%02X %s", mac[0], mac[1], mac[2], mac[3], mac[4],
+        mac[5], s);
 }
 
 /*! \brief logging function

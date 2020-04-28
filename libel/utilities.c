@@ -111,13 +111,6 @@ int validate_cache(Sky_cache_t *c, Sky_loggerfn_t logf)
         return false;
 #endif
     }
-    if (c->newest >= CACHE_SIZE) {
-#if SKY_DEBUG
-        if (logf != NULL)
-            (*logf)(SKY_LOG_LEVEL_DEBUG, "Cache validation failed: newest too big for CACHE_SIZE");
-#endif
-        return false;
-    }
 
     if (c->header.magic != SKY_MAGIC) {
 #if SKY_DEBUG
@@ -398,8 +391,8 @@ void dump_cache(Sky_ctx_t *ctx)
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d of %d - empty len:%d ap_len:%d time:%u", i,
                 ctx->cache->len, c->len, c->ap_len, c->time)
         } else {
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d of %d%s GPS:%d.%06d,%d.%06d,%d", i,
-                ctx->cache->len, ctx->cache->newest == i ? "<-newest" : "", (int)c->loc.lat,
+            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d of %d GPS:%d.%06d,%d.%06d,%d", i,
+                ctx->cache->len, (int)c->loc.lat,
                 (int)fabs(round(1000000 * (c->loc.lat - (int)c->loc.lat))), (int)c->loc.lon,
                 (int)fabs(round(1000000 * (c->loc.lon - (int)c->loc.lon))), c->loc.hpe)
             for (j = 0; j < c->len; j++) {

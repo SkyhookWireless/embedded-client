@@ -162,8 +162,7 @@ Sky_status_t sky_open(Sky_errno_t *sky_errno, uint8_t *device_id, uint32_t id_le
             snprintf(buf, sizeof(buf),
                 "%s:%s() State buffer with CRC 0x%08X, size %d, age %d Sec restored",
                 sky_basename(__FILE__), __FUNCTION__, sky_crc32(sky_state, sky_state->header.size),
-                sky_state->header.size,
-                (uint32_t)(*sky_time)(NULL)-sky_state->cacheline[sky_state->newest].time);
+                sky_state->header.size, (uint32_t)(*sky_time)(NULL)-sky_state->header.time);
             (*logf)(SKY_LOG_LEVEL_DEBUG, buf);
         }
 #endif
@@ -932,7 +931,7 @@ char *sky_pbeacon(Beacon_t *b)
     return str;
 }
 
-/*! \brief clean up library resourses
+/*! \brief clean up library resourses and optionally save state
  *
  *  @param sky_errno skyErrno is set to the error code
  *  @param sky_state pointer to where the state buffer reference should be
@@ -951,6 +950,8 @@ Sky_status_t sky_close(Sky_errno_t *sky_errno, void **sky_state)
     sky_open_flag = false;
 
     if (sky_state != NULL) {
+        /* update timestamp in state */
+        cache.header.time = (uint32_t)(*sky_time)(NULL);
         *sky_state = &cache;
 #if SKY_DEBUG
         if (sky_logf != NULL && SKY_LOG_LEVEL_DEBUG <= sky_min_level) {

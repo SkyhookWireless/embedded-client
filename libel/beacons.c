@@ -40,7 +40,8 @@
 
 void dump_workspace(Sky_ctx_t *ctx);
 void dump_cache(Sky_ctx_t *ctx);
-static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl, int *index);
+static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, int *idx_cl, int *idx_b);
+static bool beacon_in_cacheline(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl, int *index);
 
 /*! \brief test two MAC addresses for being virtual aps
  *
@@ -283,10 +284,11 @@ static Sky_status_t filter_by_rssi(Sky_ctx_t *ctx)
 static bool filter_virtual_aps(Sky_ctx_t *ctx)
 {
     int i, j;
-    int cmp, rm = -1;
+    int cmp = 0, rm = -1;
 #if SKY_DEBUG
     int keep = -1;
     bool cached = false;
+    Beacon_t *b;
 #endif
 
     LOGFMT(
@@ -304,8 +306,12 @@ static bool filter_virtual_aps(Sky_ctx_t *ctx)
         return false;
     }
 
-    for (j = 0; j < ctx->ap_len; j++) {
+    for (j = 0; j < ctx->ap_len - 1; j++) {
+        b = &ctx->beacon[j];
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cmp MAC %02X:%02X:%02X:%02X:%02X:%02X %d", b->ap.mac[0],
+            b->ap.mac[1], b->ap.mac[2], b->ap.mac[3], b->ap.mac[4], b->ap.mac[5], cmp)
         for (i = j + 1; i < ctx->ap_len; i++) {
+            b = &ctx->beacon[i];
             if ((cmp = similar(ctx->beacon[i].ap.mac, ctx->beacon[j].ap.mac)) < 0) {
                 if (ctx->beacon[j].ap.property.in_cache) {
                     rm = i;
@@ -333,6 +339,9 @@ static bool filter_virtual_aps(Sky_ctx_t *ctx)
 #endif
                 }
             }
+            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "    MAC %02X:%02X:%02X:%02X:%02X:%02X %d",
+                b->ap.mac[0], b->ap.mac[1], b->ap.mac[2], b->ap.mac[3], b->ap.mac[4], b->ap.mac[5],
+                cmp)
             if (rm != -1) {
                 LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "remove_beacon: %d similar to %d%s", rm, keep,
                     cached ? " (cached)" : "")
@@ -372,9 +381,9 @@ static bool filter_virtual_aps(Sky_ctx_t *ctx)
  */
 Sky_status_t add_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon_t *b, bool is_connected)
 {
-    int i = -1, j = 0;
+    int i = -1, j = 0, idx_cl = 0;
     int dup = -1;
-    Beacon_t *w, *c;
+    Beacon_t *wb, *cb;
 
     /* don't add any more non-AP beacons if we've already hit the limit of non-AP beacons */
     if (b->h.type != SKY_BEACON_AP &&
@@ -414,16 +423,20 @@ Sky_status_t add_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon_t *b, boo
         ctx->connected = i;
 
     /* Update the AP just added to workspace */
-    w = &ctx->beacon[i];
+    wb = &ctx->beacon[i];
     if (b->h.type == SKY_BEACON_AP) {
-        w->ap.property.in_cache =
-            beacon_in_cache(ctx, b, &ctx->cache->cacheline[ctx->cache->newest], &j);
+        wb->ap.property.in_cache = beacon_in_cache(ctx, b, &idx_cl, &j);
         /* If the added AP is in cache, copy properties */
-        c = &ctx->cache->cacheline[ctx->cache->newest].beacon[j];
-        if (w->ap.property.in_cache)
-            w->ap.property.used = c->ap.property.used;
-        else
-            w->ap.property.used = false;
+        if (wb->ap.property.in_cache) {
+            cb = &ctx->cache->cacheline[idx_cl].beacon[j];
+            wb->ap.property.used = cb->ap.property.used;
+            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
+                "Cached Beacon %-2d:%-2d: WiFi, MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d, %-4d MHz %s",
+                idx_cl, j, cb->ap.mac[0], cb->ap.mac[1], cb->ap.mac[2], cb->ap.mac[3],
+                cb->ap.mac[4], cb->ap.mac[5], cb->ap.rssi, cb->ap.freq,
+                cb->ap.property.used ? "Used" : "Unused")
+        } else
+            wb->ap.property.used = false;
 
     } else /* only filter APs */
         return sky_return(sky_errno, SKY_ERROR_NONE);
@@ -442,6 +455,46 @@ Sky_status_t add_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon_t *b, boo
     return sky_return(sky_errno, SKY_ERROR_NONE);
 }
 
+/*! \brief check if a beacon is in a cache
+ *
+ *   Scan all beacons in the cache.
+ *   the appropriate attributes. If the given beacon is found in the cacheline,
+ *   true is returned otherwise false. If index is not NULL, the index of the matching
+ *   beacon in the cacheline is saved or -1 if beacon was not found.
+ *
+ *  @param ctx Skyhook request context
+ *  @param b pointer to new beacon
+ *  @param idx_cl pointer to where the index of matching cacheline is saved
+ *  @param idx_b pointer to where the index of matching beacon is saved
+ *
+ *  @return true if beacon successfully found or false
+ */
+static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, int *idx_cl, int *idx_b)
+{
+    int i, j;
+    Sky_cacheline_t *cl;
+
+    if (!b || !ctx) {
+        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad params")
+        return false;
+    }
+
+    for (i = 0; i < ctx->cache->len; i++) {
+        cl = &ctx->cache->cacheline[i];
+        if (cl->time == 0) {
+            return false;
+        }
+        if (beacon_in_cacheline(ctx, b, cl, &j)) {
+            if (idx_cl)
+                *idx_cl = i;
+            if (idx_b)
+                *idx_b = j;
+            return true;
+        }
+    }
+    return false;
+}
+
 /*! \brief check if a beacon is in a cacheline
  *
  *   Scan all beacons in the cacheline. If the type matches the given beacon, compare
@@ -456,7 +509,7 @@ Sky_status_t add_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon_t *b, boo
  *
  *  @return true if beacon successfully found or false
  */
-static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl, int *index)
+static bool beacon_in_cacheline(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl, int *index)
 {
     int j;
     bool ret = false;
@@ -541,7 +594,7 @@ static int count_aps_in_cacheline(Sky_ctx_t *ctx, Sky_cacheline_t *cl)
     if (!ctx || !cl)
         return -1;
     for (j = 0; j < ctx->ap_len; j++) {
-        if (beacon_in_cache(ctx, &ctx->beacon[j], cl, NULL))
+        if (beacon_in_cacheline(ctx, &ctx->beacon[j], cl, NULL))
             num_aps_cached++;
     }
 #ifdef VERBOSE_DEBUG
@@ -566,7 +619,7 @@ static int count_used_aps_in_workspace(Sky_ctx_t *ctx, Sky_cacheline_t *cl)
     if (!ctx || !cl)
         return -1;
     for (j = 0; j < ctx->ap_len; j++) {
-        beacon_in_cache(ctx, &ctx->beacon[j], cl, &index);
+        beacon_in_cacheline(ctx, &ctx->beacon[j], cl, &index);
         if (index != -1 && cl->beacon[index].ap.property.used)
             num_aps_used++;
     }
@@ -696,7 +749,8 @@ int find_best_match(Sky_ctx_t *ctx)
                 LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache %d Score based on cell", i)
 
                 for (j = ctx->ap_len; j < ctx->len; j++) {
-                    if (beacon_in_cache(ctx, &ctx->beacon[j], &ctx->cache->cacheline[i], NULL)) {
+                    if (beacon_in_cacheline(
+                            ctx, &ctx->beacon[j], &ctx->cache->cacheline[i], NULL)) {
                         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache %d: cell %d type %s matches", i, j,
                             sky_pbeacon(&ctx->beacon[j]))
                         score = score + 1;
@@ -769,29 +823,6 @@ static int find_oldest(Sky_ctx_t *ctx)
     return oldestc;
 }
 
-/*! \brief note newest cache entry
- *
- *  @param ctx Skyhook request context
- *
- *  @return void
- */
-static void update_newest_cacheline(Sky_ctx_t *ctx)
-{
-    int i;
-    int newest = 0, idx = 0;
-
-    for (i = 0; i < CACHE_SIZE; i++) {
-        if (ctx->cache->cacheline[i].time > newest) {
-            newest = ctx->cache->cacheline[i].time;
-            idx = i;
-        }
-    }
-    if (newest) {
-        ctx->cache->newest = idx;
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cacheline %d is newest", idx)
-    }
-}
-
 /*! \brief add location to cache
  *
  *   The location is saved in the cacheline indicated by bestput (set by find_best_match)
@@ -831,7 +862,6 @@ Sky_status_t add_to_cache(Sky_ctx_t *ctx, Sky_location_t *loc)
     if (loc->location_status != SKY_LOCATION_STATUS_SUCCESS) {
         LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "Won't add unknown location to cache")
         cl->time = 0; /* clear cacheline */
-        update_newest_cacheline(ctx);
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "clearing cache %d of 0..%d", i, CACHE_SIZE - 1)
         return SKY_ERROR;
     } else if (cl->time == 0)
@@ -842,7 +872,6 @@ Sky_status_t add_to_cache(Sky_ctx_t *ctx, Sky_location_t *loc)
     cl->ap_len = ctx->ap_len;
     cl->loc = *loc;
     cl->time = now;
-    ctx->cache->newest = i;
     for (j = 0; j < CONFIG(ctx->cache, total_beacons); j++)
         cl->beacon[j] = ctx->beacon[j];
     return SKY_SUCCESS;
