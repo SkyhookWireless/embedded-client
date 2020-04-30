@@ -28,7 +28,9 @@
 #include <inttypes.h>
 #include <time.h>
 #include <math.h>
+#include "../.submodules/tiny-AES128-C/aes.h"
 
+#define SKY_LIBEL 1
 #include "libel.h"
 
 #include "send.h"
@@ -46,15 +48,16 @@ struct ap_scan {
 
 /* some rssi values intentionally out of range */
 struct ap_scan aps[] = /* clang-format off */ 
-                    { { "283B8264E08B", 300, 3660, -8 },
-                      { "826AB092DC99", 300, 3660, -130 },
-                      { "283B823629F0", 300, 3660, -90 },
-                      { "283B821C712A", 300, 3660, -77 },
-                      { "0024D2E08E5D", 300, 3660, -92 },
-                      { "283B821CC232", 300, 3660, -91 },
-                      { "74DADA5E1015", 300, 3660, -88 },
-                      { "B482FEA46221", 300, 3660, -89 },
-                      { "EC22809E00DB", 300, 3660, -90 } };
+//                    { { "283B8264E08B", 300, 3660, -8 },
+//                      { "826AB092DC99", 300, 3660, -130 },
+//                      { "283B823629F0", 300, 3660, -90 },
+//                      { "283B821C712A", 300, 3660, -77 },
+//                      { "0024D2E08E5D", 300, 3660, -92 },
+//                      { "283B821CC232", 300, 3660, -91 },
+//                      { "74DADA5E1015", 300, 3660, -88 },
+//                      { "B482FEA46221", 300, 3660, -89 },
+//                      { "EC22809E00DB", 300, 3660, -90 } };
+                      {};
 
 /* clang-format on */
 
@@ -213,15 +216,15 @@ int main(int argc, char *argv[])
     ret_code = load_config(configfile, &config);
     if (ret_code == -1)
         exit(-1);
-    print_config(&config);
+    // print_config(&config);
 
     /* Comment in order to disable cache loading */
     nv_space = nv_cache(nv_space, 1);
 
     timestamp = mytime(NULL); /* time scans were prepared */
     /* Initialize the Skyhook resources */
-    if (sky_open(&sky_errno, config.device_id, config.device_len, config.partner_id, config.key,
-            nv_space, SKY_LOG_LEVEL_ALL, &logger, &rand_bytes, &mytime) == SKY_ERROR) {
+    if (sky_open(&sky_errno, config.device_mac, MAC_SIZE, config.partner_id, config.key, nv_space,
+            SKY_LOG_LEVEL_ALL, &logger, &rand_bytes, &mytime) == SKY_ERROR) {
         printf("sky_open returned bad value, Can't continue\n");
         exit(-1);
     }
@@ -259,10 +262,10 @@ int main(int argc, char *argv[])
 
     /* Add UMTS cell */
     ret_status = sky_add_cell_umts_beacon(ctx, &sky_errno,
-        16101, // lac
-        14962, // ucid
-        603, // mcc
-        1, // mnc
+        16102, // lac
+        14963, // ucid
+        604, // mcc
+        2, // mnc
         timestamp - 315, // timestamp
         -100, // rscp
         0); // serving
@@ -273,9 +276,9 @@ int main(int argc, char *argv[])
 
     /* Add CDMA cell */
     ret_status = sky_add_cell_cdma_beacon(ctx, &sky_errno,
-        1552, // sid
-        45004, // nid
-        37799, // bsid
+        1553, // sid
+        45005, // nid
+        37800, // bsid
         timestamp - 315, // timestamp
         -159, // pilot-power
         0); // serving

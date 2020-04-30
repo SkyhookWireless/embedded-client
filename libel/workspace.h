@@ -58,9 +58,9 @@ typedef struct sky_config_pad {
 typedef struct sky_cache {
     Sky_header_t header; /* magic, size, timestamp, crc32 */
     uint32_t sky_id_len; /* device ID len */
-    uint8_t sky_device_id[MAC_SIZE]; /* device ID */
+    uint8_t sky_device_id[MAX_DEVICE_ID]; /* device ID */
     uint32_t sky_partner_id; /* partner ID */
-    uint8_t sky_aes_key[16]; /* aes key */
+    uint8_t sky_aes_key[AES_KEYLEN]; /* aes key */
     int len; /* number of cache lines */
     Sky_cacheline_t cacheline[CACHE_SIZE]; /* beacons */
     int newest;

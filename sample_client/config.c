@@ -144,8 +144,9 @@ int load_config(char *filename, Config_t *config)
             continue;
         }
 
-        if (sscanf(line, "DEVICE_MAC %s", str) == 1) {
-            hex2bin(str, MAC_SIZE * 2, config->device_mac, MAC_SIZE);
+        if (sscanf(line, "DEVICE_ID %s", str) == 1) {
+            config->device_len = strlen(str) / 2;
+            hex2bin(str, config->device_len * 2, config->device_id, MAX_DEVICE_ID);
             continue;
         }
     }
@@ -164,11 +165,12 @@ int load_config(char *filename, Config_t *config)
 void print_config(Config_t *config)
 {
     char key[AES_SIZE * 2 + 1];
+    char device[MAX_DEVICE_ID * 2 + 1];
+
     bin2hex(key, AES_SIZE * 2, config->key, AES_SIZE);
     key[AES_SIZE * 2] = '\0';
-    char device[MAC_SIZE * 2 + 1];
-    bin2hex(device, MAC_SIZE * 2, config->device_mac, MAC_SIZE);
-    device[MAC_SIZE * 2] = '\0';
+    bin2hex(device, sizeof(device), config->device_id, config->device_len);
+    device[config->device_len * 2] = '\0';
 
     printf("Configuration file: %s\n", config->filename);
     printf("Server: %s\n", config->server);

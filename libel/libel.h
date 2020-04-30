@@ -22,15 +22,16 @@
  * IN THE SOFTWARE.
  *
  */
+#ifndef SKY_LIBEL_H
+#define SKY_LIBEL_H
+
 #include <inttypes.h>
 #include <stdbool.h>
 #include <string.h>
 #include <time.h>
+#include "aes.h"
+#include "crc32.h"
 
-#ifndef SKY_LIBEL_H
-#define SKY_LIBEL_H
-
-#define MAC_SIZE 6
 #define AES_SIZE 16
 
 #define MAX_DEVICE_ID 16
@@ -131,18 +132,18 @@ typedef int (*Sky_randfn_t)(uint8_t *rand_buf, uint32_t bufsize);
  */
 typedef time_t (*Sky_timefn_t)(time_t *t);
 
-#ifndef SKY_LIBEL
-typedef void Sky_ctx_t;
-#else
+#ifdef SKY_LIBEL
 #include "config.h"
 #include "beacons.h"
-#include "crc32.h"
 #include "workspace.h"
 #include "utilities.h"
+#else
+typedef void Sky_ctx_t;
+#define MAC_SIZE 6
 #endif
 
 Sky_status_t sky_open(Sky_errno_t *sky_errno, uint8_t *device_id, uint32_t id_len,
-    uint32_t partner_id, uint8_t aes_key[16], void *state_buf, Sky_log_level_t min_level,
+    uint32_t partner_id, uint8_t aes_key[AES_KEYLEN], void *state_buf, Sky_log_level_t min_level,
     Sky_loggerfn_t logf, Sky_randfn_t rand_bytes, Sky_timefn_t gettime);
 
 int32_t sky_sizeof_state(void *sky_state);
@@ -151,7 +152,7 @@ int32_t sky_sizeof_workspace(void);
 
 Sky_ctx_t *sky_new_request(void *workspace_buf, uint32_t bufsize, Sky_errno_t *sky_errno);
 
-Sky_status_t sky_add_ap_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uint8_t mac[6],
+Sky_status_t sky_add_ap_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uint8_t mac[MAC_SIZE],
     time_t timestamp, int16_t rssi, int32_t freq, bool is_connected);
 
 Sky_status_t sky_add_cell_lte_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uint16_t tac,

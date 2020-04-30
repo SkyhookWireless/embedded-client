@@ -32,6 +32,11 @@
 
 #define MAC_SIZE 6
 
+#define NUM_CELLS(p) ((p)->len - (p)->ap_len)
+#define NUM_APS(p) ((p)->ap_len)
+#define NUM_BEACONS(p) ((p)->len)
+#define IMPLIES(a, b) (!(a) || (b))
+
 /*! \brief Types of beacon
  */
 typedef enum {

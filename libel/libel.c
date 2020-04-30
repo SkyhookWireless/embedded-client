@@ -108,7 +108,7 @@ Sky_status_t copy_state(Sky_errno_t *sky_errno, Sky_cache_t *c, Sky_cache_t *sky
  *  be truncated to 16 if larger, without causing an error.
  */
 Sky_status_t sky_open(Sky_errno_t *sky_errno, uint8_t *device_id, uint32_t id_len,
-    uint32_t partner_id, uint8_t aes_key[16], void *state_buf, Sky_log_level_t min_level,
+    uint32_t partner_id, uint8_t aes_key[AES_KEYLEN], void *state_buf, Sky_log_level_t min_level,
     Sky_loggerfn_t logf, Sky_randfn_t rand_bytes, Sky_timefn_t gettime)
 {
 #if SKY_DEBUG
@@ -119,7 +119,7 @@ Sky_status_t sky_open(Sky_errno_t *sky_errno, uint8_t *device_id, uint32_t id_le
     int j = 0;
 
     /* Only consider up to 16 bytes. Ignore any extra */
-    id_len = (id_len > MAX_DEVICE_ID) ? 16 : id_len;
+    id_len = (id_len > MAX_DEVICE_ID) ? MAX_DEVICE_ID : id_len;
 
     if (sky_state != NULL && !validate_cache(sky_state, logf)) {
         if (logf != NULL && SKY_LOG_LEVEL_WARNING <= min_level)

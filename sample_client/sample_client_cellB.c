@@ -28,7 +28,9 @@
 #include <inttypes.h>
 #include <time.h>
 #include <math.h>
+#include "../.submodules/tiny-AES128-C/aes.h"
 
+#define SKY_LIBEL 1
 #include "libel.h"
 
 #include "send.h"
@@ -213,15 +215,15 @@ int main(int argc, char *argv[])
     ret_code = load_config(configfile, &config);
     if (ret_code == -1)
         exit(-1);
-    print_config(&config);
+    // print_config(&config);
 
     /* Comment in order to disable cache loading */
     nv_space = nv_cache(nv_space, 1);
 
     timestamp = mytime(NULL); /* time scans were prepared */
     /* Initialize the Skyhook resources */
-    if (sky_open(&sky_errno, config.device_id, config.device_len, config.partner_id, config.key,
-            nv_space, SKY_LOG_LEVEL_ALL, &logger, &rand_bytes, &mytime) == SKY_ERROR) {
+    if (sky_open(&sky_errno, config.device_mac, MAC_SIZE, config.partner_id, config.key, nv_space,
+            SKY_LOG_LEVEL_ALL, &logger, &rand_bytes, &mytime) == SKY_ERROR) {
         printf("sky_open returned bad value, Can't continue\n");
         exit(-1);
     }
@@ -257,6 +259,7 @@ int main(int argc, char *argv[])
             printf("Ignoring AP becon with bad MAC Address '%s' index %d\n", aps[i].mac, i + 1);
     }
 
+#if 0
     /* Add UMTS cell */
     ret_status = sky_add_cell_umts_beacon(ctx, &sky_errno,
         16101, // lac
@@ -291,7 +294,6 @@ int main(int argc, char *argv[])
     else
         printf("Error adding GNSS: '%s'\n", sky_perror(sky_errno));
 
-#if 0
     /* Add LTE cell */
     ret_status = sky_add_cell_lte_beacon(ctx, &sky_errno,
         12345, // tac
@@ -306,12 +308,13 @@ int main(int argc, char *argv[])
         printf("Cell added\n");
     else
         printf("Error adding LTE cell: '%s'\n", sky_perror(sky_errno));
+#endif
 
     /* Add NBIOT cell */
     ret_status = sky_add_cell_nb_iot_beacon(ctx, &sky_errno,
-        311, // mcc
-        480, // mnc
-        209979678, // eucid
+        312, // mcc
+        481, // mnc
+        209979679, // eucid
         25187, // tac
         timestamp - 315, // timestamp
         -143, // rssi
@@ -321,7 +324,6 @@ int main(int argc, char *argv[])
         printf("Cell added\n");
     else
         printf("Error adding NBIOT cell: '%s'\n", sky_perror(sky_errno));
-#endif
     /* Determine how big the network request buffer must be, and allocate a */
     /* buffer of that length. This function must be called for each request. */
     ret_status = sky_sizeof_request_buf(ctx, &request_size, &sky_errno);

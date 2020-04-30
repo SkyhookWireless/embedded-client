@@ -1,11 +1,9 @@
 CFLAGS = -Wall -Werror -Os -std=c99
 LIB_DIR = ../bin
-AES_DIR = ../.submodules/tiny-AES128-C
+INCLUDES = -I. -I../libel
+CLIENT_NAME = sample_client_cellB
 
-INCLUDES = -I. -I../libel -I${AES_DIR}
-CLIENT_NAME = sample_client
-
-CLIENT_SRCS = sample_client.c send.c config.c
+CLIENT_SRCS = sample_client_cellB.c send.c config.c
 CLIENT_OBJS = $(CLIENT_SRCS:.c=.o)
 
 ${CLIENT_NAME}: ${CLIENT_OBJS} ${LIB_DIR}/libel.a

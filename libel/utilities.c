@@ -29,7 +29,6 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
-#include "../.submodules/tiny-AES128-C/aes.h"
 #define SKY_LIBEL 1
 #include "libel.h"
 
