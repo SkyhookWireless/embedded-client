@@ -457,10 +457,10 @@ Sky_status_t add_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon_t *b, boo
 
 /*! \brief check if a beacon is in a cache
  *
- *   Scan all beacons in the cache.
- *   the appropriate attributes. If the given beacon is found in the cacheline,
- *   true is returned otherwise false. If index is not NULL, the index of the matching
- *   beacon in the cacheline is saved or -1 if beacon was not found.
+ *   Scan all cachelines in the cache looking for a matching beacon.
+ *   If the given beacon is found in the cacheline,
+ *   true is returned otherwise false. If indexes is not NULL, the index of the matching
+ *   cacheline and beacon in that cacheline are saved (or -1 if beacon was not found).
  *
  *  @param ctx Skyhook request context
  *  @param b pointer to new beacon
@@ -481,9 +481,6 @@ static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, int *idx_cl, int *idx_b
 
     for (i = 0; i < ctx->cache->len; i++) {
         cl = &ctx->cache->cacheline[i];
-        if (cl->time == 0) {
-            return false;
-        }
         if (beacon_in_cacheline(ctx, b, cl, &j)) {
             if (idx_cl)
                 *idx_cl = i;
@@ -492,6 +489,10 @@ static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, int *idx_cl, int *idx_b
             return true;
         }
     }
+    if (idx_cl)
+        *idx_cl = -1;
+    if (idx_b)
+        *idx_b = -1;
     return false;
 }
 
@@ -516,10 +517,14 @@ static bool beacon_in_cacheline(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl
 
     if (!cl || !b || !ctx) {
         LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad params")
+        if (index)
+            *index = -1;
         return false;
     }
 
     if (cl->time == 0) {
+        if (index)
+            *index = -1;
         return false;
     }
 
@@ -579,7 +584,7 @@ static bool beacon_in_cacheline(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl
     return ret;
 }
 
-/*! \brief count number of cached APs in workspace relative to a cacheline
+/*! \brief Return the number of workspace APs present in the specified cacheline
  *
  *  @param ctx Skyhook request context
  *  @param cl the cacheline to count in, otherwise count in workspace
@@ -604,7 +609,7 @@ static int count_aps_in_cacheline(Sky_ctx_t *ctx, Sky_cacheline_t *cl)
     return num_aps_cached;
 }
 
-/*! \brief count number of used APs in workspace relative to a cacheline
+/*! \brief Return the number of used APs in workspace relative to a cacheline
  *
  *  @param ctx Skyhook request context
  *  @param cl the cacheline to count in, otherwise count in workspace
