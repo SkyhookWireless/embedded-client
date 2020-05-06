@@ -3,8 +3,6 @@ include ../../.submodules/nanopb/extra/nanopb.mk
 
 TARGETS = el.pb.c el.pb.h
 
-PROTOC_OPTS = -I.
-
 default: ${TARGETS}
 
 clean:
