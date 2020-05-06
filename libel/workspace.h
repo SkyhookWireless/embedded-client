@@ -52,6 +52,8 @@ typedef struct sky_config_pad {
     uint32_t cache_age_threshold;
     uint32_t cache_beacon_threshold;
     uint32_t cache_neg_rssi_threshold;
+    uint32_t cache_match_all_threshold;
+    uint32_t cache_match_used_threshold;
     /* add more configuration params here */
 } Sky_config_t;
 
