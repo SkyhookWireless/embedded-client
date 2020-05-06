@@ -628,6 +628,20 @@ static bool apply_config_overrides(Sky_cache_t *c, Rs *rs)
             CONFIG(c, cache_neg_rssi_threshold) = rs->config.cache_neg_rssi_threshold;
         }
     }
+    if (rs->config.cache_match_all_threshold != 0 &&
+        rs->config.cache_match_all_threshold != CONFIG(c, cache_match_all_threshold)) {
+        if (rs->config.cache_match_all_threshold > 0 &&
+            rs->config.cache_match_all_threshold <= 100) {
+            CONFIG(c, cache_match_all_threshold) = rs->config.cache_match_all_threshold;
+        }
+    }
+    if (rs->config.cache_match_used_threshold != 0 &&
+        rs->config.cache_match_used_threshold != CONFIG(c, cache_match_used_threshold)) {
+        if (rs->config.cache_match_used_threshold > 0 &&
+            rs->config.cache_match_used_threshold <= 100) {
+            CONFIG(c, cache_match_used_threshold) = rs->config.cache_match_used_threshold;
+        }
+    }
     override = (rs->config.total_beacons != 0 || rs->config.max_ap_beacons != 0 ||
                 rs->config.cache_match_threshold != 0 || rs->config.cache_age_threshold != 0 ||
                 rs->config.cache_beacon_threshold != 0 || rs->config.cache_neg_rssi_threshold != 0);
