@@ -83,6 +83,7 @@ typedef struct sky_ctx {
     Gps_t gps; /* GNSS info */
     /* Assume worst case is that beacons and gps info takes twice the bare structure size */
     int16_t bestput; /* cacheline with best match for saving */
+    int16_t ap_vg_len; /* max Virtual APs in a group (0 == none) */
     Sky_cache_t *cache;
 } Sky_ctx_t;
 #endif

@@ -485,14 +485,14 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
     // header.
     //
     if (buf_len < 1) {
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: buf_len < 1")
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: buf_len < 1");
         return -1;
     }
 
     buf += 1;
 
     if (buf_len < 1 + hdr_size) {
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: buf_len < 1 + hdr_size")
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: buf_len < 1 + hdr_size");
         return -1;
     }
 
@@ -511,7 +511,7 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
 
         // Deserialize the crypto_info.
         if (buf_len < 1 + hdr_size + header.crypto_info_length + header.rs_length) {
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: buf_len <...")
+            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: buf_len <...");
             return -1;
         }
 
@@ -544,7 +544,7 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
         // Extract Used info for each AP from the Used_aps bytes
         for (a = 0; a < ctx->ap_len; a++) {
             i = rs.used_aps.size - 1 - (a / 8);
-            // LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Used: AP %d, Byte: 0x%02X idx: %d:%d", a, rs.used_aps.bytes[i], i, (a % 8))
+            // LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Used: AP %d, Byte: 0x%02X idx: %d:%d", a, rs.used_aps.bytes[i], i, (a % 8));
             if (a < rs.used_aps.size * 8)
                 ctx->beacon[a].ap.property.used = rs.used_aps.bytes[i] & (1 << (a % 8)) ? 1 : 0;
             else

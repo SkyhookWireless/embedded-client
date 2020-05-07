@@ -263,22 +263,24 @@ Sky_ctx_t *sky_new_request(void *workspace_buf, uint32_t bufsize, Sky_errno_t *s
         ctx->beacon[i].h.magic = BEACON_MAGIC;
         ctx->beacon[i].h.type = SKY_BEACON_MAX;
     }
+    ctx->bestput = -1; /* unknown */
     ctx->connected = -1; /* all unconnected */
+    ctx->ap_vg_len = MAX_VAP / MAX_AP_BEACONS;
     if (ctx->cache->len) {
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "%d cachelines present", ctx->cache->len)
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "%d cachelines present", ctx->cache->len);
         for (i = 0; i < CACHE_SIZE; i++) {
             if (ctx->cache->cacheline[i].ap_len > CONFIG(ctx->cache, max_ap_beacons) ||
                 ctx->cache->cacheline[i].len > CONFIG(ctx->cache, total_beacons)) {
                 ctx->cache->cacheline[i].time = 0;
                 LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                    "cache %d of %d cleared due to new Dynamic Parameters", i, CACHE_SIZE)
+                    "cache %d of %d cleared due to new Dynamic Parameters", i, CACHE_SIZE);
             }
             if (ctx->cache->cacheline[i].time &&
                 (now - ctx->cache->cacheline[i].time) >
                     ctx->cache->config.cache_age_threshold * SECONDS_IN_HOUR) {
                 ctx->cache->cacheline[i].time = 0;
                 LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache %d of %d cleared due to age (%d)", i,
-                    CACHE_SIZE, now - ctx->cache->cacheline[i].time)
+                    CACHE_SIZE, now - ctx->cache->cacheline[i].time);
             }
         }
         dump_cache(ctx);
@@ -307,7 +309,7 @@ Sky_status_t sky_add_ap_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uint8_t m
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
         "%02X:%02X:%02X:%02X:%02X:%02X, rssi: %d, freq %d, connect %s, age %d", mac[0], mac[1],
         mac[2], mac[3], mac[4], mac[5], rssi, frequency, is_connected ? "true" : "false",
-        (int)(ctx->header.time - timestamp))
+        (int)(ctx->header.time - timestamp));
 
     if (!sky_open_flag)
         return sky_return(sky_errno, SKY_ERROR_NEVER_OPEN);
@@ -358,7 +360,7 @@ Sky_status_t sky_add_cell_lte_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uin
 
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
         "e-cellid: %d, mcc: %d, mnc: %d, tac: %d, rsrp: %d, connect %s, age %d", e_cellid, mcc, mnc,
-        tac, rsrp, is_connected ? "true" : "false", (int)(ctx->header.time - timestamp))
+        tac, rsrp, is_connected ? "true" : "false", (int)(ctx->header.time - timestamp));
 
     if (!sky_open_flag)
         return sky_return(sky_errno, SKY_ERROR_NEVER_OPEN);
@@ -409,7 +411,7 @@ Sky_status_t sky_add_cell_gsm_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uin
 
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
         "lac: %d, ci: %d, mcc: %d, mnc: %d, rssi: %d, connect %s, age %d", lac, ci, mcc, mnc, rssi,
-        is_connected ? "true" : "false", (int)(ctx->header.time - timestamp))
+        is_connected ? "true" : "false", (int)(ctx->header.time - timestamp));
 
     if (!sky_open_flag)
         return sky_return(sky_errno, SKY_ERROR_NEVER_OPEN);
@@ -460,7 +462,7 @@ Sky_status_t sky_add_cell_umts_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, ui
 
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
         "lac: %d, ucid: %d, mcc: %d, mnc: %d, rscp: %d, connect %s, age %d", lac, ucid, mcc, mnc,
-        rscp, is_connected ? "true" : "false", (int)(ctx->header.time - timestamp))
+        rscp, is_connected ? "true" : "false", (int)(ctx->header.time - timestamp));
 
     if (!sky_open_flag)
         return sky_return(sky_errno, SKY_ERROR_NEVER_OPEN);
@@ -509,7 +511,7 @@ Sky_status_t sky_add_cell_cdma_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, ui
     Beacon_t b;
 
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "sid: %d, nid: %d, bsid: %d, rssi: %d, connect %s, age %d",
-        sid, nid, bsid, rssi, is_connected ? "true" : "false", (int)(ctx->header.time - timestamp))
+        sid, nid, bsid, rssi, is_connected ? "true" : "false", (int)(ctx->header.time - timestamp));
 
     if (!sky_open_flag)
         return sky_return(sky_errno, SKY_ERROR_NEVER_OPEN);
@@ -560,7 +562,7 @@ Sky_status_t sky_add_cell_nb_iot_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, 
 
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
         "mcc: %d, mnc: %d, e_cellid: %d, tac: %d, nrsrp: %d, connect %s, age %d", mcc, mnc,
-        e_cellid, tac, nrsrp, is_connected ? "true" : "false", (int)(ctx->header.time - timestamp))
+        e_cellid, tac, nrsrp, is_connected ? "true" : "false", (int)(ctx->header.time - timestamp));
 
     if (!sky_open_flag)
         return sky_return(sky_errno, SKY_ERROR_NEVER_OPEN);
@@ -613,11 +615,11 @@ Sky_status_t sky_add_gnss(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, float lat, flo
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "%d.%06d,%d.%06d, hpe: %d, alt: %d.%02d, vpe: %d,", (int)lat,
         (int)fabs(round(1000000 * (lat - (int)lat))), (int)lon,
         (int)fabs(round(1000000 * (lon - (int)lon))), hpe, (int)altitude,
-        (int)fabs(round(100 * (altitude - (int)altitude))), vpe)
+        (int)fabs(round(100 * (altitude - (int)altitude))), vpe);
 
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "%d.%01dm/s, bearing: %d.%01d, nsat: %d, %d", (int)speed,
         (int)fabs(round(10 * (speed - (int)speed))), (int)bearing,
-        (int)fabs(round(1 * (bearing - (int)bearing))), nsat, (int)timestamp)
+        (int)fabs(round(1 * (bearing - (int)bearing))), nsat, (int)timestamp);
 
     if (!validate_workspace(ctx))
         return sky_return(sky_errno, SKY_ERROR_BAD_WORKSPACE);
@@ -661,7 +663,7 @@ Sky_finalize_t sky_finalize_request(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, void
     /* There must be at least one beacon */
     if (ctx->len == 0) {
         *sky_errno = SKY_ERROR_NO_BEACONS;
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cannot process request with no beacons")
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cannot process request with no beacons");
         return SKY_FINALIZE_ERROR;
     }
 
@@ -674,26 +676,26 @@ Sky_finalize_t sky_finalize_request(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, void
         time_t cached_time = loc->time;
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Location from cache: %d.%06d,%d.%06d, hpe %d, %d",
             (int)loc->lat, (int)fabs(round(1000000 * (loc->lat - (int)loc->lat))), (int)loc->lon,
-            (int)fabs(round(1000000 * (loc->lon - (int)loc->lon))), loc->hpe, (int)cached_time)
+            (int)fabs(round(1000000 * (loc->lon - (int)loc->lon))), loc->hpe, (int)cached_time);
 #endif
         return SKY_FINALIZE_LOCATION;
     }
 
     if (request_buf == NULL) {
         *sky_errno = SKY_ERROR_BAD_PARAMETERS;
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Buffer pointer is bad")
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Buffer pointer is bad");
         return SKY_FINALIZE_ERROR;
     }
 
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Processing request with %d beacons into %d byte buffer",
-        ctx->len, bufsize)
+        ctx->len, bufsize);
 
 #if SKY_DEBUG
     if (ctx->cache->config.last_config_time == 0)
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Requesting new dynamic configuration parameters")
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Requesting new dynamic configuration parameters");
     else
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Configuration parameter: %d",
-            ctx->cache->config.last_config_time)
+            ctx->cache->config.last_config_time);
 #endif
 
     /* encode request */
@@ -705,7 +707,7 @@ Sky_finalize_t sky_finalize_request(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, void
 
         *sky_errno = SKY_ERROR_NONE;
 
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Request buffer of %d bytes prepared", rc)
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Request buffer of %d bytes prepared", rc);
         LOG_BUFFER(ctx, SKY_LOG_LEVEL_DEBUG, request_buf, rc)
         return SKY_FINALIZE_REQUEST;
     } else {
@@ -768,28 +770,29 @@ Sky_status_t sky_decode_response(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, void *r
     uint32_t bufsize, Sky_location_t *loc)
 {
     if (loc == NULL || response_buf == NULL || bufsize == 0) {
-        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad parameters")
+        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad parameters");
         return sky_return(sky_errno, SKY_ERROR_BAD_PARAMETERS);
     }
 
     /* decode response to get lat/lon */
     if (deserialize_response(ctx, response_buf, bufsize, loc) < 0) {
-        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Response decode failure")
+        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Response decode failure");
         return sky_return(sky_errno, SKY_ERROR_DECODE_ERROR);
     } else if (loc->location_status != SKY_LOCATION_STATUS_SUCCESS) {
         LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Server error. Status: %s",
-            sky_pserver_status(loc->location_status))
+            sky_pserver_status(loc->location_status));
         return sky_return(sky_errno, SKY_ERROR_SERVER_ERROR);
     }
     loc->time = (*ctx->gettime)(NULL);
 
     /* Add location and current beacons to Cache */
-    if (add_to_cache(ctx, loc) == SKY_ERROR)
-        LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "failed to add to cache")
+    if (add_to_cache(ctx, loc) == SKY_ERROR) {
+        LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "failed to add to cache");
+    }
 
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Location from server %d.%06d,%d.%06d hpe: %d", (int)loc->lat,
         (int)fabs(round(1000000 * (loc->lat - (int)loc->lat))), (int)loc->lon,
-        (int)fabs(round(1000000 * (loc->lon - (int)loc->lon))), loc->hpe)
+        (int)fabs(round(1000000 * (loc->lon - (int)loc->lon))), loc->hpe);
 
     return sky_return(sky_errno, SKY_ERROR_NONE);
 }
