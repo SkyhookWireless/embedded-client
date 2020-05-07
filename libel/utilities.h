@@ -26,10 +26,12 @@
 #define SKY_UTILITIES_H
 
 #if SKY_DEBUG
-#define LOGFMT(...) logfmt(__FILE__, __FUNCTION__, __VA_ARGS__);
+#define LOGFMT(...) logfmt(__FILE__, __FUNCTION__, __VA_ARGS__)
 #define LOG_BUFFER(c, l, b, s) log_buffer(__FILE__, __FUNCTION__, c, l, b, s);
 #else
-#define LOGFMT(...)
+#define LOGFMT(...)                                                                                \
+    do {                                                                                           \
+    } while (0)
 #define LOG_BUFFER(c, l, b, s)
 #endif
 Sky_status_t sky_return(Sky_errno_t *sky_errno, Sky_errno_t code);

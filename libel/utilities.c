@@ -295,6 +295,43 @@ int log_buffer(const char *file, const char *function, Sky_ctx_t *ctx, Sky_log_l
     return buf_offset;
 }
 
+/*! \brief dump Virtual APs in group
+ *
+ *  @param ctx workspace pointer
+ *  @param idx index of Virtual Group AP
+ *  @param b beacon
+ *
+ *  @returns 0 for success or negative number for error
+ */
+void dump_vap(Sky_ctx_t *ctx, int i, Beacon_t *b)
+{
+#if SKY_DEBUG
+    int j, d, n;
+    uint8_t *vap = b->ap.vg;
+    uint8_t mac[MAC_SIZE];
+
+    if (!b || !vap)
+        return;
+    for (j = 0; j < MAX_VAP; j++) {
+        if (vap[j] == 0x00)
+            return;
+        memcpy(mac, b->ap.mac, MAC_SIZE);
+        d = (vap[j] >> 4) & 0x0F;
+        n = vap[j] & 0x0F;
+        if (d & 1)
+            mac[d / 2] = ((mac[d / 2] & 0xF0) | n);
+        else
+            mac[d / 2] = ((mac[d / 2] & 0x0F) | (n << 4));
+
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
+            " Virt AP %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz VAP(%01X %01X)",
+            i, b->ap.age,
+            b->ap.property.in_cache ? (b->ap.property.used ? "Used  " : "Unused") : "      ",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], b->ap.rssi, b->ap.freq, d, n);
+    }
+#endif
+}
+
 /*! \brief dump the beacons in the workspace
  *
  *  @param ctx workspace pointer
@@ -307,7 +344,7 @@ void dump_workspace(Sky_ctx_t *ctx)
     int i;
 
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "WorkSpace: Got %d beacons, WiFi %d, connected %d", ctx->len,
-        ctx->ap_len, ctx->connected)
+        ctx->ap_len, ctx->connected);
     for (i = 0; i < ctx->len; i++) {
         switch (ctx->beacon[i].h.type) {
         case SKY_BEACON_AP:
@@ -319,42 +356,45 @@ void dump_workspace(Sky_ctx_t *ctx)
                     "      ",
                 ctx->beacon[i].ap.mac[0], ctx->beacon[i].ap.mac[1], ctx->beacon[i].ap.mac[2],
                 ctx->beacon[i].ap.mac[3], ctx->beacon[i].ap.mac[4], ctx->beacon[i].ap.mac[5],
-                ctx->beacon[i].ap.rssi, ctx->beacon[i].ap.freq)
+                ctx->beacon[i].ap.rssi, ctx->beacon[i].ap.freq);
+            if (ctx->beacon[i].ap.vg[0])
+                ;
+            dump_vap(ctx, i, &ctx->beacon[i]);
             break;
         case SKY_BEACON_CDMA:
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                 " Beacon %-2d: CDMA Age: %d sid: %d, nid: %d, bsid: %d, rssi: %d", i,
                 ctx->beacon[i].cdma.age, ctx->beacon[i].cdma.sid, ctx->beacon[i].cdma.nid,
-                ctx->beacon[i].cdma.bsid, ctx->beacon[i].cdma.rssi)
+                ctx->beacon[i].cdma.bsid, ctx->beacon[i].cdma.rssi);
             break;
         case SKY_BEACON_GSM:
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                 " Beacon %-2d: GSM Age: %d lac: %d, ui: %d, mcc: %d, mnc: %d, rssi: %d", i,
                 ctx->beacon[i].gsm.age, ctx->beacon[i].gsm.lac, ctx->beacon[i].gsm.ci,
-                ctx->beacon[i].gsm.mcc, ctx->beacon[i].gsm.mnc, ctx->beacon[i].gsm.rssi)
+                ctx->beacon[i].gsm.mcc, ctx->beacon[i].gsm.mnc, ctx->beacon[i].gsm.rssi);
             break;
         case SKY_BEACON_LTE:
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                 " Beacon %-2d: LTE Age: %d e-cellid: %d, mcc: %d, mnc: %d, tac: %d, rssi: %d", i,
                 ctx->beacon[i].lte.age, ctx->beacon[i].lte.e_cellid, ctx->beacon[i].lte.mcc,
-                ctx->beacon[i].lte.mnc, ctx->beacon[i].lte.tac, ctx->beacon[i].lte.rssi)
+                ctx->beacon[i].lte.mnc, ctx->beacon[i].lte.tac, ctx->beacon[i].lte.rssi);
             break;
         case SKY_BEACON_NBIOT:
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                 " Beacon %-2d: NB-IoT Age: %d mcc: %d, mnc: %d, e_cellid: %d, tac: %d, rssi: %d", i,
                 ctx->beacon[i].nbiot.age, ctx->beacon[i].nbiot.mcc, ctx->beacon[i].nbiot.mnc,
-                ctx->beacon[i].nbiot.e_cellid, ctx->beacon[i].nbiot.tac, ctx->beacon[i].nbiot.rssi)
+                ctx->beacon[i].nbiot.e_cellid, ctx->beacon[i].nbiot.tac, ctx->beacon[i].nbiot.rssi);
             break;
         case SKY_BEACON_UMTS:
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                 " Beacon %-2d: UMTS Age: %d lac: %d, ucid: %d, mcc: %d, mnc: %d, rssi: %d", i,
                 ctx->beacon[i].umts.age, ctx->beacon[i].umts.lac, ctx->beacon[i].umts.ucid,
-                ctx->beacon[i].umts.mcc, ctx->beacon[i].umts.mnc, ctx->beacon[i].umts.rssi)
+                ctx->beacon[i].umts.mcc, ctx->beacon[i].umts.mnc, ctx->beacon[i].umts.rssi);
             break;
         case SKY_BEACON_BLE:
         case SKY_BEACON_MAX:
         default:
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Beacon %-2d: Type: Unknown", i)
+            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Beacon %-2d: Type: Unknown", i);
             break;
         }
     }
@@ -365,7 +405,7 @@ void dump_workspace(Sky_ctx_t *ctx)
             CONFIG(ctx->cache, cache_match_threshold), CONFIG(ctx->cache, cache_age_threshold),
             CONFIG(ctx->cache, cache_beacon_threshold),
             CONFIG(ctx->cache, cache_neg_rssi_threshold),
-            ctx->header.time - CONFIG(ctx->cache, last_config_time))
+            ctx->header.time - CONFIG(ctx->cache, last_config_time));
     } else {
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
             "Config: Total Beacons:%d Max AP Beacons:%d Thresholds:%d(Match) %d(Age) %d(Beacons) %d(RSSI) Update:%d Sec ago",
@@ -373,7 +413,7 @@ void dump_workspace(Sky_ctx_t *ctx)
             CONFIG(ctx->cache, cache_match_threshold), CONFIG(ctx->cache, cache_age_threshold),
             CONFIG(ctx->cache, cache_beacon_threshold),
             CONFIG(ctx->cache, cache_neg_rssi_threshold),
-            (int)((*ctx->gettime)(NULL)-CONFIG(ctx->cache, last_config_time)))
+            (int)((*ctx->gettime)(NULL)-CONFIG(ctx->cache, last_config_time)));
     }
 #endif
 }
@@ -395,12 +435,12 @@ void dump_cache(Sky_ctx_t *ctx)
         c = &ctx->cache->cacheline[i];
         if (c->len == 0 || c->time == 0) {
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d of %d - empty len:%d ap_len:%d time:%u", i,
-                ctx->cache->len, c->len, c->ap_len, c->time)
+                ctx->cache->len, c->len, c->ap_len, c->time);
         } else {
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d of %d%s GPS:%d.%06d,%d.%06d,%d", i,
                 ctx->cache->len, ctx->cache->newest == i ? "<-newest" : "", (int)c->loc.lat,
                 (int)fabs(round(1000000 * (c->loc.lat - (int)c->loc.lat))), (int)c->loc.lon,
-                (int)fabs(round(1000000 * (c->loc.lon - (int)c->loc.lon))), c->loc.hpe)
+                (int)fabs(round(1000000 * (c->loc.lon - (int)c->loc.lon))), c->loc.hpe);
             for (j = 0; j < c->len; j++) {
                 b = &c->beacon[j];
                 switch (b->h.type) {
@@ -409,38 +449,40 @@ void dump_cache(Sky_ctx_t *ctx)
                         " Beacon %-2d:%-2d: WiFi, MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d, %-4d MHz %s",
                         i, j, b->ap.mac[0], b->ap.mac[1], b->ap.mac[2], b->ap.mac[3], b->ap.mac[4],
                         b->ap.mac[5], b->ap.rssi, b->ap.freq,
-                        b->ap.property.used ? "Used" : "Unused")
+                        b->ap.property.used ? "Used" : "Unused");
+                    if (b->ap.vg[0])
+                        dump_vap(ctx, j, b);
                     break;
                 case SKY_BEACON_CDMA:
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                         " Beacon %-2d:%-2d: Type: CDMA, sid: %d, nid: %d, bsid: %d, rssi: %d", i, j,
-                        b->cdma.sid, b->cdma.nid, b->cdma.bsid, b->cdma.rssi)
+                        b->cdma.sid, b->cdma.nid, b->cdma.bsid, b->cdma.rssi);
                     break;
                 case SKY_BEACON_GSM:
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                         " Beacon %-2d:%-2d: Type: GSM, lac: %d, ui: %d, mcc: %d, mnc: %d, rssi: %d",
-                        i, j, b->gsm.lac, b->gsm.ci, b->gsm.mcc, b->gsm.mnc, b->gsm.rssi)
+                        i, j, b->gsm.lac, b->gsm.ci, b->gsm.mcc, b->gsm.mnc, b->gsm.rssi);
                     break;
                 case SKY_BEACON_LTE:
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                         " Beacon %-2d:%-2d: Age: %d Type: LTE, e-cellid: %d, mcc: %d, mnc: %d, tac: %d, rssi: %d",
                         i, j, b->lte.age, b->lte.e_cellid, b->lte.mcc, b->lte.mnc, b->lte.tac,
-                        b->lte.rssi)
+                        b->lte.rssi);
                     break;
                 case SKY_BEACON_NBIOT:
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                         " Beacon %-2d:%-2d: Type: NB-IoT, mcc: %d, mnc: %d, e_cellid: %d, tac: %d, rssi: %d",
                         i, j, b->nbiot.mcc, b->nbiot.mnc, b->nbiot.e_cellid, b->nbiot.tac,
-                        b->nbiot.rssi)
+                        b->nbiot.rssi);
                     break;
                 case SKY_BEACON_UMTS:
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                         " Beacon %-2d:%-2d: Type: UMTS, lac: %d, ucid: %d, mcc: %d, mnc: %d, rssi: %d",
-                        i, j, b->umts.lac, b->umts.ucid, b->umts.mcc, b->umts.mnc, b->umts.rssi)
+                        i, j, b->umts.lac, b->umts.ucid, b->umts.mcc, b->umts.mnc, b->umts.rssi);
                     break;
                 case SKY_BEACON_BLE:
                 case SKY_BEACON_MAX:
-                    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, " Beacon %-2d:%-2d: Type: Unknown!!!", i, j)
+                    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, " Beacon %-2d:%-2d: Type: Unknown!!!", i, j);
                     break;
                 }
             }
@@ -550,7 +592,7 @@ int32_t get_num_beacons(Sky_ctx_t *ctx, Sky_beacon_type_t t)
     int i, b = 0;
 
     if (ctx == NULL || t > SKY_BEACON_MAX) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     if (t == SKY_BEACON_AP) {
@@ -578,7 +620,7 @@ int get_base_beacons(Sky_ctx_t *ctx, Sky_beacon_type_t t)
     int i = 0;
 
     if (ctx == NULL || t > SKY_BEACON_MAX) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     if (t == SKY_BEACON_AP) {
@@ -602,7 +644,7 @@ int get_base_beacons(Sky_ctx_t *ctx, Sky_beacon_type_t t)
 int32_t get_num_aps(Sky_ctx_t *ctx)
 {
     if (ctx == NULL) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->ap_len;
@@ -618,7 +660,7 @@ int32_t get_num_aps(Sky_ctx_t *ctx)
 uint8_t *get_ap_mac(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > ctx->ap_len) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[idx].ap.mac;
@@ -634,7 +676,7 @@ uint8_t *get_ap_mac(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_ap_freq(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > ctx->ap_len) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[idx].ap.freq;
@@ -650,7 +692,7 @@ int64_t get_ap_freq(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_ap_rssi(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > ctx->ap_len) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[idx].ap.rssi;
@@ -666,7 +708,7 @@ int64_t get_ap_rssi(Sky_ctx_t *ctx, uint32_t idx)
 bool get_ap_is_connected(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > ctx->ap_len) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return idx == ctx->connected;
@@ -682,7 +724,7 @@ bool get_ap_is_connected(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_ap_age(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > ctx->ap_len) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[idx].ap.age;
@@ -697,7 +739,7 @@ int64_t get_ap_age(Sky_ctx_t *ctx, uint32_t idx)
 int32_t get_num_gsm(Sky_ctx_t *ctx)
 {
     if (ctx == NULL) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return get_num_beacons(ctx, SKY_BEACON_GSM);
@@ -713,7 +755,7 @@ int32_t get_num_gsm(Sky_ctx_t *ctx)
 int64_t get_gsm_ci(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_gsm(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_GSM) + idx].gsm.ci;
@@ -729,7 +771,7 @@ int64_t get_gsm_ci(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_gsm_mcc(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_gsm(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_GSM) + idx].gsm.mcc;
@@ -745,7 +787,7 @@ int64_t get_gsm_mcc(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_gsm_mnc(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_gsm(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_GSM) + idx].gsm.mnc;
@@ -761,7 +803,7 @@ int64_t get_gsm_mnc(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_gsm_lac(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_gsm(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_GSM) + idx].gsm.lac;
@@ -777,7 +819,7 @@ int64_t get_gsm_lac(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_gsm_rssi(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_gsm(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_GSM) + idx].gsm.rssi;
@@ -793,7 +835,7 @@ int64_t get_gsm_rssi(Sky_ctx_t *ctx, uint32_t idx)
 bool get_gsm_is_connected(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_gsm(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->connected == get_base_beacons(ctx, SKY_BEACON_GSM) + idx;
@@ -809,7 +851,7 @@ bool get_gsm_is_connected(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_gsm_age(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_gsm(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_GSM) + idx].gsm.age;
@@ -824,7 +866,7 @@ int64_t get_gsm_age(Sky_ctx_t *ctx, uint32_t idx)
 int32_t get_num_nbiot(Sky_ctx_t *ctx)
 {
     if (ctx == NULL) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return get_num_beacons(ctx, SKY_BEACON_NBIOT);
@@ -840,7 +882,7 @@ int32_t get_num_nbiot(Sky_ctx_t *ctx)
 int64_t get_nbiot_mcc(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_nbiot(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_NBIOT) + idx].nbiot.mcc;
@@ -856,7 +898,7 @@ int64_t get_nbiot_mcc(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_nbiot_mnc(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_nbiot(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_NBIOT) + idx].nbiot.mnc;
@@ -872,7 +914,7 @@ int64_t get_nbiot_mnc(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_nbiot_ecellid(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_nbiot(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_NBIOT) + idx].nbiot.e_cellid;
@@ -888,7 +930,7 @@ int64_t get_nbiot_ecellid(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_nbiot_tac(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_nbiot(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_NBIOT) + idx].nbiot.tac;
@@ -904,7 +946,7 @@ int64_t get_nbiot_tac(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_nbiot_rssi(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_nbiot(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_NBIOT) + idx].nbiot.rssi;
@@ -920,7 +962,7 @@ int64_t get_nbiot_rssi(Sky_ctx_t *ctx, uint32_t idx)
 bool get_nbiot_is_connected(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_nbiot(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->connected == get_base_beacons(ctx, SKY_BEACON_NBIOT) + idx;
@@ -936,7 +978,7 @@ bool get_nbiot_is_connected(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_nbiot_age(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_nbiot(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_NBIOT) + idx].nbiot.age;
@@ -951,7 +993,7 @@ int64_t get_nbiot_age(Sky_ctx_t *ctx, uint32_t idx)
 int32_t get_num_lte(Sky_ctx_t *ctx)
 {
     if (ctx == NULL) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return get_num_beacons(ctx, SKY_BEACON_LTE);
@@ -967,7 +1009,7 @@ int32_t get_num_lte(Sky_ctx_t *ctx)
 int64_t get_lte_mcc(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_lte(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_LTE) + idx].lte.mcc;
@@ -983,7 +1025,7 @@ int64_t get_lte_mcc(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_lte_mnc(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_lte(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_LTE) + idx].lte.mnc;
@@ -999,7 +1041,7 @@ int64_t get_lte_mnc(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_lte_e_cellid(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_lte(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_LTE) + idx].lte.e_cellid;
@@ -1015,7 +1057,7 @@ int64_t get_lte_e_cellid(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_lte_tac(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_lte(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_LTE) + idx].lte.tac;
@@ -1031,7 +1073,7 @@ int64_t get_lte_tac(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_lte_rssi(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_lte(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_LTE) + idx].lte.rssi;
@@ -1047,7 +1089,7 @@ int64_t get_lte_rssi(Sky_ctx_t *ctx, uint32_t idx)
 bool get_lte_is_connected(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_lte(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->connected == get_base_beacons(ctx, SKY_BEACON_LTE) + idx;
@@ -1063,7 +1105,7 @@ bool get_lte_is_connected(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_lte_age(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_lte(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_LTE) + idx].lte.age;
@@ -1078,7 +1120,7 @@ int64_t get_lte_age(Sky_ctx_t *ctx, uint32_t idx)
 int32_t get_num_cdma(Sky_ctx_t *ctx)
 {
     if (ctx == NULL) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return get_num_beacons(ctx, SKY_BEACON_CDMA);
@@ -1094,7 +1136,7 @@ int32_t get_num_cdma(Sky_ctx_t *ctx)
 int64_t get_cdma_sid(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_cdma(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_CDMA) + idx].cdma.sid;
@@ -1110,7 +1152,7 @@ int64_t get_cdma_sid(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_cdma_nid(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_cdma(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_CDMA) + idx].cdma.nid;
@@ -1126,7 +1168,7 @@ int64_t get_cdma_nid(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_cdma_bsid(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_cdma(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_CDMA) + idx].cdma.bsid;
@@ -1142,7 +1184,7 @@ int64_t get_cdma_bsid(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_cdma_rssi(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_cdma(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_CDMA) + idx].cdma.rssi;
@@ -1158,7 +1200,7 @@ int64_t get_cdma_rssi(Sky_ctx_t *ctx, uint32_t idx)
 bool get_cdma_is_connected(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_cdma(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->connected == get_base_beacons(ctx, SKY_BEACON_CDMA) + idx;
@@ -1174,7 +1216,7 @@ bool get_cdma_is_connected(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_cdma_age(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_cdma(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_CDMA) + idx].cdma.age;
@@ -1189,7 +1231,7 @@ int64_t get_cdma_age(Sky_ctx_t *ctx, uint32_t idx)
 int32_t get_num_umts(Sky_ctx_t *ctx)
 {
     if (ctx == NULL) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return get_num_beacons(ctx, SKY_BEACON_UMTS);
@@ -1205,7 +1247,7 @@ int32_t get_num_umts(Sky_ctx_t *ctx)
 int64_t get_umts_lac(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_umts(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_UMTS) + idx].umts.lac;
@@ -1221,7 +1263,7 @@ int64_t get_umts_lac(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_umts_ucid(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_umts(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_UMTS) + idx].umts.ucid;
@@ -1237,7 +1279,7 @@ int64_t get_umts_ucid(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_umts_mcc(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_umts(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_UMTS) + idx].umts.mcc;
@@ -1253,7 +1295,7 @@ int64_t get_umts_mcc(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_umts_mnc(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_umts(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_UMTS) + idx].umts.mnc;
@@ -1269,7 +1311,7 @@ int64_t get_umts_mnc(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_umts_rssi(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_umts(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_UMTS) + idx].umts.rssi;
@@ -1285,7 +1327,7 @@ int64_t get_umts_rssi(Sky_ctx_t *ctx, uint32_t idx)
 bool get_umts_is_connected(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_umts(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return ctx->connected == get_base_beacons(ctx, SKY_BEACON_UMTS) + idx;
@@ -1301,7 +1343,7 @@ bool get_umts_is_connected(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_umts_age(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || idx > (ctx->len - get_num_umts(ctx))) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param");
         return 0;
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_UMTS) + idx].umts.age;
@@ -1316,7 +1358,7 @@ int64_t get_umts_age(Sky_ctx_t *ctx, uint32_t idx)
 int32_t get_num_gnss(Sky_ctx_t *ctx)
 {
     if (ctx == NULL) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     return isnan(ctx->gps.lat) ? 0 : 1;
@@ -1332,7 +1374,7 @@ int32_t get_num_gnss(Sky_ctx_t *ctx)
 float get_gnss_lat(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || isnan(ctx->gps.lat)) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param");
         return NAN;
     }
     return ctx->gps.lat;
@@ -1348,7 +1390,7 @@ float get_gnss_lat(Sky_ctx_t *ctx, uint32_t idx)
 float get_gnss_lon(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || isnan(ctx->gps.lat)) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param");
         return NAN;
     }
     return ctx->gps.lon;
@@ -1364,7 +1406,7 @@ float get_gnss_lon(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_gnss_hpe(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || isnan(ctx->gps.lat)) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param");
         return 0;
     }
     return ctx->gps.hpe;
@@ -1380,7 +1422,7 @@ int64_t get_gnss_hpe(Sky_ctx_t *ctx, uint32_t idx)
 float get_gnss_alt(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || isnan(ctx->gps.lat)) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param");
         return NAN;
     }
     return ctx->gps.alt;
@@ -1395,7 +1437,7 @@ float get_gnss_alt(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_gnss_vpe(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || isnan(ctx->gps.lat)) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param");
         return 0;
     }
     return ctx->gps.vpe;
@@ -1411,7 +1453,7 @@ int64_t get_gnss_vpe(Sky_ctx_t *ctx, uint32_t idx)
 float get_gnss_speed(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || isnan(ctx->gps.lat)) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param");
         return NAN;
     }
     return ctx->gps.speed;
@@ -1427,7 +1469,7 @@ float get_gnss_speed(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_gnss_bearing(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || isnan(ctx->gps.lat)) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param");
         return 0;
     }
     return ctx->gps.bearing;
@@ -1443,7 +1485,7 @@ int64_t get_gnss_bearing(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_gnss_nsat(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL || isnan(ctx->gps.lat)) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param");
         return 0;
     }
     return ctx->gps.nsat;
@@ -1459,7 +1501,7 @@ int64_t get_gnss_nsat(Sky_ctx_t *ctx, uint32_t idx)
 int64_t get_gnss_age(Sky_ctx_t *ctx, uint32_t idx)
 {
     if (ctx == NULL) {
-        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param")
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad param");
         return 0;
     }
     return ctx->gps.age;
