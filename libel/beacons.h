@@ -71,6 +71,7 @@ struct ap {
     uint32_t age;
     uint32_t freq;
     int16_t rssi;
+    uint8_t vg_len;
     uint8_t vg[MAX_VAP / MAX_AP_BEACONS]; /* mac delta of collapsed Virtual APs */
 };
 

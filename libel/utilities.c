@@ -310,11 +310,9 @@ void dump_vap(Sky_ctx_t *ctx, int i, Beacon_t *b)
     uint8_t *vap = b->ap.vg;
     uint8_t mac[MAC_SIZE];
 
-    if (!b || !vap)
+    if (!b || !vap || !b->ap.vg_len)
         return;
-    for (j = 0; j < MAX_VAP; j++) {
-        if (vap[j] == 0x00)
-            return;
+    for (j = 0; j < b->ap.vg_len; j++) {
         memcpy(mac, b->ap.mac, MAC_SIZE);
         d = (vap[j] >> 4) & 0x0F;
         n = vap[j] & 0x0F;
@@ -349,16 +347,14 @@ void dump_workspace(Sky_ctx_t *ctx)
         switch (ctx->beacon[i].h.type) {
         case SKY_BEACON_AP:
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                " Beacon %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz",
+                " Beacon %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz vap: %d",
                 i, ctx->beacon[i].ap.age,
                 ctx->beacon[i].ap.property.in_cache ?
                     (ctx->beacon[i].ap.property.used ? "Used  " : "Unused") :
                     "      ",
                 ctx->beacon[i].ap.mac[0], ctx->beacon[i].ap.mac[1], ctx->beacon[i].ap.mac[2],
                 ctx->beacon[i].ap.mac[3], ctx->beacon[i].ap.mac[4], ctx->beacon[i].ap.mac[5],
-                ctx->beacon[i].ap.rssi, ctx->beacon[i].ap.freq);
-            if (ctx->beacon[i].ap.vg[0])
-                ;
+                ctx->beacon[i].ap.rssi, ctx->beacon[i].ap.freq, ctx->beacon[i].ap.vg_len);
             dump_vap(ctx, i, &ctx->beacon[i]);
             break;
         case SKY_BEACON_CDMA:
@@ -446,11 +442,11 @@ void dump_cache(Sky_ctx_t *ctx)
                 switch (b->h.type) {
                 case SKY_BEACON_AP:
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                        " Beacon %-2d:%-2d: WiFi, MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d, %-4d MHz %s",
+                        " Beacon %-2d:%-2d: WiFi, MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d, %-4d MHz vap: %d %s",
                         i, j, b->ap.mac[0], b->ap.mac[1], b->ap.mac[2], b->ap.mac[3], b->ap.mac[4],
-                        b->ap.mac[5], b->ap.rssi, b->ap.freq,
+                        b->ap.mac[5], b->ap.rssi, b->ap.freq, b->ap.vg_len,
                         b->ap.property.used ? "Used" : "Unused");
-                    if (b->ap.vg[0])
+                    if (b->ap.vg_len)
                         dump_vap(ctx, j, b);
                     break;
                 case SKY_BEACON_CDMA:
@@ -1505,6 +1501,57 @@ int64_t get_gnss_age(Sky_ctx_t *ctx, uint32_t idx)
         return 0;
     }
     return ctx->gps.age;
+}
+
+/*! \brief field extraction for dynamic use of Nanopb (num vap_delta)
+ *
+ *  @param ctx workspace buffer
+ *
+ *  @return number of bytes of compressed Virtual APs
+ */
+int32_t get_num_vap_delta(Sky_ctx_t *ctx)
+{
+    int j, nv = 0;
+    Beacon_t *w;
+
+    if (ctx == NULL) {
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
+        return 0;
+    }
+    for (j = 0; j < NUM_APS(ctx); j++) {
+        w = &ctx->beacon[j];
+        nv += w->ap.vg_len;
+    }
+
+    return nv;
+}
+
+/*! \brief field extraction for dynamic use of Nanopb (vap_delta)
+ *
+ *  @param ctx workspace buffer
+ *  @param idx index into Virtual APs
+ *
+ *  @return beacon is_connected info
+ */
+int64_t get_vap_delta(Sky_ctx_t *ctx, uint32_t idx)
+{
+    int j, nv = 0;
+    Beacon_t *w;
+
+    if (ctx == NULL) {
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
+        return 0;
+    }
+    /* Walk through APs, when the idx is within Virtual Group of current AP */
+    /* return the Virtual AP delta with the index of the current AP plus one */
+    for (j = 0; j < NUM_APS(ctx); j++) {
+        w = &ctx->beacon[j];
+        if (nv + w->ap.vg_len > idx)
+            return (j + 1) << 8 | w->ap.vg[idx - nv];
+        else
+            nv += w->ap.vg_len;
+    }
+    return 0;
 }
 
 /*! \brief generate random byte sequence

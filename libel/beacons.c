@@ -159,8 +159,10 @@ static bool add_vap(Sky_ctx_t *ctx, int vg, int ap, int d)
     if (!dup && v == ctx->ap_vg_len - 1) /* Not room for one more */
         return false;
 
-    if (!dup)
-        pvg[v++] = delta;
+    if (!dup) {
+        pvg[v] = delta;
+        ctx->beacon[vg].ap.vg_len = v + 1;
+    }
 
     /* Add any virtual APs from the one being added (if it is a group) */
     for (av = 0; av < ctx->ap_vg_len; av++) {
@@ -174,6 +176,7 @@ static bool add_vap(Sky_ctx_t *ctx, int vg, int ap, int d)
                     return false;
                 }
                 pvg[v] = ctx->beacon[ap].ap.vg[av];
+                ctx->beacon[ap].ap.vg_len = v + 1;
             } else
                 break; /* copied group */
         }
