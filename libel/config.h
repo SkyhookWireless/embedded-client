@@ -26,7 +26,7 @@
 #define SKY_CONFIG_H
 
 /* Change to false to remove all calls to logging */
-#define SKY_DEBUG false
+#define SKY_DEBUG true
 #define SKY_LOG_LENGTH 200
 
 /*! \brief The maximum number of beacons passed to the server in a request
@@ -37,8 +37,7 @@
 #define MAX_AP_BEACONS 10
 /*! \brief The maximum number of Virtual APs in a Virtual group
  */
-// #define MAX_VAP 100
-#define MAX_VAP 2
+#define MAX_VAP 100
 
 /*! \brief The percentage of beacons that must match in a cached scan/location
  */
@@ -62,7 +61,7 @@
 
 /*! \brief The number of entries in the scan/response cache
  */
-#define CACHE_SIZE 3
+#define CACHE_SIZE 0
 
 /*! \brief The maximum space the dynamic configuration parameters may take up in bytes
  */

@@ -147,6 +147,7 @@ static bool encode_ap_fields(Sky_ctx_t *ctx, pb_ostream_t *ostream)
 {
     uint32_t num_beacons = get_num_aps(ctx);
 
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "num vap %d", get_num_vap_delta(ctx));
     return encode_connected_field(
                ctx, ostream, num_beacons, Aps_connected_idx_plus_1_tag, get_ap_is_connected) &&
            encode_repeated_int_field(ctx, ostream, Aps_mac_tag, num_beacons, mac_to_int, NULL) &&
@@ -155,7 +156,9 @@ static bool encode_ap_fields(Sky_ctx_t *ctx, pb_ostream_t *ostream)
            encode_repeated_int_field(
                ctx, ostream, Aps_neg_rssi_tag, num_beacons, get_ap_rssi, flip_sign) &&
            encode_optimized_repeated_field(
-               ctx, ostream, num_beacons, Aps_common_age_plus_1_tag, Aps_age_tag, get_ap_age);
+               ctx, ostream, num_beacons, Aps_common_age_plus_1_tag, Aps_age_tag, get_ap_age) &&
+           encode_repeated_int_field(
+               ctx, ostream, get_num_vap_delta(ctx), Aps_vap_delta_tag, get_vap_delta, NULL);
 }
 
 static bool encode_cdma_fields(Sky_ctx_t *ctx, pb_ostream_t *ostream)
