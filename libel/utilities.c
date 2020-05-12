@@ -1547,7 +1547,7 @@ int64_t get_vap_delta(Sky_ctx_t *ctx, uint32_t idx)
     for (j = 0; j < NUM_APS(ctx); j++) {
         w = &ctx->beacon[j];
         if (nv + w->ap.vg_len > idx)
-            return (j + 1) << 8 | w->ap.vg[idx - nv];
+            return ((j + 1) << 8) | w->ap.vg[idx - nv];
         else
             nv += w->ap.vg_len;
     }
