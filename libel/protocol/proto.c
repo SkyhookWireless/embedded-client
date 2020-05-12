@@ -126,7 +126,7 @@ static bool encode_optimized_repeated_field(Sky_ctx_t *ctx, pb_ostream_t *ostrea
     uint32_t num_beacons, uint32_t tag1, uint32_t tag2, DataGetter getter)
 {
     // Encode fields. Optimization: send only a single common value if
-    // all ages are the same.
+    // all values are the same.
     int64_t value = getter(ctx, 0);
     bool value_all_same = true;
     size_t i;
@@ -158,7 +158,7 @@ static bool encode_ap_fields(Sky_ctx_t *ctx, pb_ostream_t *ostream)
            encode_optimized_repeated_field(
                ctx, ostream, num_beacons, Aps_common_age_plus_1_tag, Aps_age_tag, get_ap_age) &&
            encode_repeated_int_field(
-               ctx, ostream, get_num_vap_delta(ctx), Aps_vap_delta_tag, get_vap_delta, NULL);
+               ctx, ostream, Aps_vap_delta_tag, get_num_vap_delta(ctx), get_vap_delta, NULL);
 }
 
 static bool encode_cdma_fields(Sky_ctx_t *ctx, pb_ostream_t *ostream)
@@ -450,6 +450,8 @@ int32_t serialize_request(
         bytes_written += ostream.bytes_written;
     else
         return -1;
+
+    log_buffer(__FILE__, __FUNCTION__, ctx, SKY_LOG_LEVEL_DEBUG, buf, rq_size);
 
     // Encrypt the (serialized) request body.
     //
