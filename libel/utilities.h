@@ -49,6 +49,8 @@ int logfmt(
 int log_buffer(const char *file, const char *function, Sky_ctx_t *ctx, Sky_log_level_t level,
     void *buffer, uint32_t bufsize);
 #endif
+void dump_vap(Sky_ctx_t *ctx, Beacon_t *b);
+void dump_ap(Sky_ctx_t *ctx, char *str, Beacon_t *b);
 void dump_workspace(Sky_ctx_t *ctx);
 void dump_cache(Sky_ctx_t *ctx);
 void config_defaults(Sky_cache_t *c);

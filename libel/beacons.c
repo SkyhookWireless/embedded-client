@@ -41,48 +41,88 @@ void dump_workspace(Sky_ctx_t *ctx);
 void dump_cache(Sky_ctx_t *ctx);
 static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl, int *index);
 
-/*! \brief test two MAC addresses for being virtual aps
+/*! \brief test two MAC addresses for being members of same virtual Group
+ *
+ *   Similar means the two mac addresses differ only in one nibble AND
+ *   if that nibble is the second-least-significant bit of second hex digit,
+ *   then that bit must match too.
  *
  *  @param macA pointer to the first MAC
  *  @param macB pointer to the second MAC
- *  @param pd pointer to index of delta
+ *  @param pn pointer to nibble index of where they differ if similar (0-11)
  *
  *  @return -1, 0 or 1
- *  return 0 when NOT similar, -1 indicates keep A, 1 keep B
+ *  return 0 when NOT similar, -1 indicates parent is A, 1 parent is B
  *  if macs are similar, and index is not NULL, index is set to nibble index of difference
  */
-static int similar(uint8_t macA[], uint8_t macB[], int *pd)
+#define NIBBLE_MASK(n) (0xF0 >> (4 * ((n)&1)))
+#define LOCAL_ADMIN_MASK(byte) (0x02 & (byte))
+static int mac_similar(Sky_ctx_t *ctx, uint8_t macA[], uint8_t macB[], int *pn)
 {
     /* Return 1 (true) if OUIs are identical and no more than 1 hex digits
      * differ between the two MACs. Else return 0 (false).
      */
     size_t num_diff = 0; // Num hex digits which differ
     size_t idx_diff = 0; // nibble digit which differs
-    size_t i;
-    int smaller = 0;
+    size_t n;
+    int result = 0;
 
-    if (memcmp(macA, macB, 3) != 0)
-        return 0;
-
-    for (i = 3; i < MAC_SIZE; i++) {
-        if ((macA[i] & 0xF0) != (macB[i] & 0xF0)) {
+    /* for each nibble, increment count if different */
+    for (n = 0; n < MAC_SIZE * 2; n++) {
+        if ((macA[n / 2] & NIBBLE_MASK(n)) != (macB[n / 2] & NIBBLE_MASK(n))) {
             if (++num_diff > 1)
-                return 0;
-            idx_diff = i * 2;
-            smaller = macA[i] - macB[i];
-        }
-        if ((macA[i] & 0x0F) != (macB[i] & 0x0F)) {
-            if (++num_diff > 1)
-                return 0;
-            idx_diff = i * 2 + 1;
-            smaller = macA[i] - macB[i];
+                return 0; /* too many differences, not similar */
+            idx_diff = n;
+            result = macA[n / 2] - macB[n / 2];
         }
     }
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "idx: %d A: 0x%02X B:0x%02X", idx_diff, macA[0], macB[0]);
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "idx: %d A: 0x%02X B:0x%02X", idx_diff,
+        LOCAL_ADMIN_MASK(macA[0]), LOCAL_ADMIN_MASK(macB[0]));
+    /* Only one nibble different, but is the Local Administrative bit different */
+    if (LOCAL_ADMIN_MASK(macA[0]) != LOCAL_ADMIN_MASK(macB[0])) {
+        return 0; /* not similar */
+    }
 
-    /* MACs are similar, choose one to remove */
-    if (pd)
-        *pd = idx_diff;
-    return (smaller < 0 ? -1 : 1);
+    /* report which nibble is different */
+    if (pn)
+        *pn = idx_diff;
+    return (result < 0 ? -1 : 1);
+}
+
+/*! \brief test two APs in workspace for members of same virtual group 
+ *
+ */
+static int ap_similar(Sky_ctx_t *ctx, Beacon_t *apA, Beacon_t *apB, int *pn)
+{
+    int b, v, n = 0;
+
+    if ((b = mac_similar(ctx, apA->ap.mac, apB->ap.mac, &n)) == 0) {
+#if VERBOSE_DEBUG
+        dump_ap(ctx, "Differ A ", apA);
+        dump_ap(ctx, "       B ", apB);
+#endif
+        return 0;
+    }
+    /* APs have similar mac addresses, but are any members of the virtual groups similar */
+    /* Check that children have difference in same nibble */
+    for (v = 0; v < apA->ap.vg_len; v++)
+        if (apA->ap.vg[v].nibble_idx != n) {
+            dump_ap(ctx, "Mismatch A*", apA);
+            dump_ap(ctx, "         B ", apB);
+            return 0;
+        }
+    for (v = 0; v < apB->ap.vg_len; v++)
+        if (apB->ap.vg[v].nibble_idx != n) {
+            dump_ap(ctx, "Mismatch A ", apA);
+            dump_ap(ctx, "         B*", apB);
+            return 0;
+        }
+    if (pn)
+        *pn = n;
+    dump_ap(ctx, "Match A ", apA);
+    dump_ap(ctx, "      B ", apB);
+    return b;
 }
 
 /*! \brief extract nibble from mac
@@ -102,85 +142,95 @@ static uint8_t nibble(uint8_t *mac, int d)
         return ((mac[d / 2] >> 4) & 0x0F);
 }
 
-/*! \brief add an AP to Group, including any from thay APs Group
+/*! \brief add AP to Virtual Group (parent AP), including any associated children of that AP
+ *
+ *   A list of patches are stored in parent of virtual group, one for each child
+ *   These patches describe the how to change parent mac to that of child
+ *   The parent rssi is updated based on the weighted average of APs in virtual group.
  *
  *  @param ctx Skyhook request context
- *  @param vg index of virtual group mac
- *  @param ap index of AP to add to group
- *  @param d index of nibble that differs
+ *  @param vg index of parent AP
+ *  @param ap index of child AP
+ *  @param n index of nibble that differs between parent and child mac
  *
  *  @return bool true if AP is added, false otherwise
  */
-static bool add_vap(Sky_ctx_t *ctx, int vg, int ap, int d)
+static bool add_child_to_VirtualGroup(Sky_ctx_t *ctx, int vg, int ap, int n)
 {
-    int v, av, dup;
-    uint8_t n, delta;
-    uint8_t *pvg;
+    Beacon_t *parent, *child;
+    int ap_p, ap_c, dup;
+    uint8_t replace; /* value of nibble in child */
+    Vap_t patch; /* how to patch parent mac to create child mac */
+    Vap_t *pvg; /* the list of patches in parent AP */
 
+    parent = &ctx->beacon[vg];
+    child = &ctx->beacon[ap];
 #if SKY_DEBUG
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Group type %s idx: %d, add: %d",
-        sky_pbeacon(&ctx->beacon[vg]), vg, ap);
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-        " Virt G %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz", vg,
-        ctx->beacon[vg].ap.age,
-        ctx->beacon[vg].ap.property.in_cache ?
-            (ctx->beacon[vg].ap.property.used ? "Used  " : "Unused") :
-            "      ",
-        ctx->beacon[vg].ap.mac[0], ctx->beacon[vg].ap.mac[1], ctx->beacon[vg].ap.mac[2],
-        ctx->beacon[vg].ap.mac[3], ctx->beacon[vg].ap.mac[4], ctx->beacon[vg].ap.mac[5],
-        ctx->beacon[vg].ap.rssi, ctx->beacon[vg].ap.freq);
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-        " Virt A %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz", ap,
-        ctx->beacon[ap].ap.age,
-        ctx->beacon[ap].ap.property.in_cache ?
-            (ctx->beacon[ap].ap.property.used ? "Used  " : "Unused") :
-            "      ",
-        ctx->beacon[ap].ap.mac[0], ctx->beacon[ap].ap.mac[1], ctx->beacon[ap].ap.mac[2],
-        ctx->beacon[ap].ap.mac[3], ctx->beacon[ap].ap.mac[4], ctx->beacon[ap].ap.mac[5],
-        ctx->beacon[ap].ap.rssi, ctx->beacon[ap].ap.freq);
+    dump_ap(ctx, " Parent", parent);
+    dump_ap(ctx, " Child ", child);
 #endif
 
     if (vg >= NUM_APS(ctx) || ap >= NUM_APS(ctx))
         return false;
 
-    if ((n = nibble(ctx->beacon[ap].ap.mac, d)) == 0xff)
+    if ((replace = nibble(child->ap.mac, n)) == 0xff)
         return false;
 
-    pvg = ctx->beacon[vg].ap.vg;
-    delta = (uint8_t)d << 4 | n;
-    /* find end of list of APs in Virtual group. */
-    /* Leave at least one terminating 0x00 */
-    for (dup = v = 0; v < ctx->ap_vg_len - 1; v++) {
-        if ((pvg[v] & 0xF0) == 0)
-            break;
-        if (pvg[v] == delta)
+    pvg = parent->ap.vg;
+    patch.nibble_idx = n;
+    patch.value = replace;
+
+    /* ignore child if user has added same AP before */
+    for (dup = ap_p = 0; ap_p < parent->ap.vg_len; ap_p++) {
+        if (pvg[ap_p].nibble_idx == patch.nibble_idx && pvg[ap_p].value == patch.value)
             dup = 1;
     }
-    if (!dup && v == ctx->ap_vg_len - 1) /* Not room for one more */
+    if (!dup && ap_p == MAX_VAP) /* No room for one more */
         return false;
 
+    /* update parent rssi with proportion of child rssi */
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, " Virt members Parent: %d, Child: %d", parent->ap.vg_len + 1,
+        child->ap.vg_len + 1);
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, " Parent rssi updated from: %d, to: %.1f", parent->ap.rssi,
+        (parent->ap.rssi * (float)(parent->ap.vg_len + 1) /
+            ((parent->ap.vg_len + 1) + (child->ap.vg_len + 1))) +
+            (child->ap.rssi * (float)(child->ap.vg_len + 1) /
+                ((parent->ap.vg_len + 1) + (child->ap.vg_len + 1))));
+    parent->ap.rssi = (parent->ap.rssi * (float)(parent->ap.vg_len + 1) /
+                          ((parent->ap.vg_len + 1) + (child->ap.vg_len + 1))) +
+                      (child->ap.rssi * (float)(child->ap.vg_len + 1) /
+                          ((parent->ap.vg_len + 1) + (child->ap.vg_len + 1)));
+    /* update parent cache status true if child or parent in cache */
+    if ((parent->ap.property.in_cache =
+                (parent->ap.property.in_cache || child->ap.property.in_cache)) == true)
+        parent->ap.property.used = (parent->ap.property.used || child->ap.property.used);
+
+    /* Add child unless it is already a member in the parent group */
     if (!dup) {
-        pvg[v] = delta;
-        ctx->beacon[vg].ap.vg_len = v + 1;
+        pvg[ap_p] = patch;
+        parent->ap.vg_len = ap_p + 1;
     }
 
-    /* Add any virtual APs from the one being added (if it is a group) */
-    for (av = 0; av < ctx->ap_vg_len; av++) {
-        for (v = 0; v < ctx->ap_vg_len - 1; v++) {
+    /* Add any Virtual APs from child */
+    for (ap_c = 0; ap_c < child->ap.vg_len; ap_c++) {
+        for (ap_p = 0; ap_p < parent->ap.vg_len - 1; ap_p++) {
             /* Ignore any duplicates */
-            if (ctx->beacon[ap].ap.vg[av] == pvg[v])
-                continue;
-            if (ctx->beacon[ap].ap.vg[av] != 0) {
-                if (v == ctx->ap_vg_len - 1) { /* No room */
-                    LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "No room to keep all Virtual APs");
-                    return false;
-                }
-                pvg[v] = ctx->beacon[ap].ap.vg[av];
-                ctx->beacon[ap].ap.vg_len = v + 1;
-            } else
-                break; /* copied group */
+            if (pvg[ap_p].nibble_idx == child->ap.vg[ap_c].nibble_idx &&
+                pvg[ap_p].value == child->ap.vg[ap_c].value)
+                break;
+        }
+        /* copy child to parent if not already a member */
+        if (ap_p == parent->ap.vg_len) {
+            if (ap_p == MAX_VAP) {
+                LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "No room to keep all Virtual APs");
+                return false;
+            }
+            pvg[ap_p].nibble_idx = child->ap.vg[ap_c].nibble_idx;
+            pvg[ap_p].value = child->ap.vg[ap_c].value;
+            parent->ap.vg_len = ap_p + 1;
         }
     }
+
     return true;
 }
 
@@ -281,7 +331,7 @@ static Sky_status_t filter_by_rssi(Sky_ctx_t *ctx)
     /* if the rssi range is small, throw away middle beacon */
 
     if (band_range < 0.5) {
-        /* search from middle of range looking for Unused beacon in cache */
+        /* search from middle of range looking for uncached beacon or Unused beacon in cache */
         for (jump = 0, up_down = -1, i = NUM_APS(ctx) / 2; i >= 0 && i < NUM_APS(ctx);
              jump++, i += up_down * jump, up_down = -up_down) {
             b = &ctx->beacon[i];
@@ -295,20 +345,23 @@ static Sky_status_t filter_by_rssi(Sky_ctx_t *ctx)
         return remove_beacon(ctx, NUM_APS(ctx) / 2);
     }
 
-    /* if beacon with min RSSI is below threshold, throw out weak one, not in cache or Unused */
+    /* if beacon with min RSSI is below threshold, */
+    /* throw out weak one, not in cache, not Virtual Group or Unused  */
     if (NOMINAL_RSSI(ctx->beacon[0].ap.rssi) < -CONFIG(ctx->cache, cache_neg_rssi_threshold)) {
         for (i = 0, reject = -1; i < NUM_APS(ctx) && reject == -1; i++) {
             if (ctx->beacon[i].ap.rssi < -CONFIG(ctx->cache, cache_neg_rssi_threshold) &&
-                !ctx->beacon[i].ap.property.in_cache)
+                !ctx->beacon[i].ap.property.in_cache && !ctx->beacon[i].ap.vg_len)
                 reject = i;
         }
         for (i = 0; i < NUM_APS(ctx) && reject == -1; i++) {
             if (ctx->beacon[i].ap.rssi < -CONFIG(ctx->cache, cache_neg_rssi_threshold) &&
-                ctx->beacon[i].ap.property.in_cache && !ctx->beacon[i].ap.property.used)
+                ctx->beacon[i].ap.property.in_cache && !ctx->beacon[i].ap.vg_len &&
+                !ctx->beacon[i].ap.property.used)
                 reject = i;
         }
         if (reject == -1)
-            reject = 0; // reject lowest rssi value if there is no uncached or Unused beacon
+            reject =
+                0; // reject lowest rssi value if there is no non-virtual group and no uncached or Unused beacon
         LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "Discarding beacon %d with very weak strength", 0);
         return remove_beacon(ctx, reject);
     }
@@ -324,9 +377,9 @@ static Sky_status_t filter_by_rssi(Sky_ctx_t *ctx)
 
     /* find AP with poorest fit to ideal rssi */
     /* always keep lowest and highest rssi */
-    /* unless all the middle candidates are in the cache */
+    /* unless all the middle candidates are in the cache or virtual group */
     for (i = 1, reject = -1, worst = 0; i < NUM_APS(ctx) - 1; i++) {
-        if (!ctx->beacon[i].ap.property.in_cache &&
+        if (!ctx->beacon[i].ap.property.in_cache && !ctx->beacon[i].ap.vg_len &&
             fabs(NOMINAL_RSSI(ctx->beacon[i].ap.rssi) - ideal_rssi[i]) > worst) {
             worst = fabs(NOMINAL_RSSI(ctx->beacon[i].ap.rssi) - ideal_rssi[i]);
             reject = i;
@@ -335,9 +388,10 @@ static Sky_status_t filter_by_rssi(Sky_ctx_t *ctx)
     if (reject == -1) {
         /* haven't found a beacon to remove yet due to matching cached beacons */
         /* Throw away either lowest or highest rssi valued beacons if not in cache */
-        if (!ctx->beacon[0].ap.property.in_cache)
+        /* and not in virtual group */
+        if (!ctx->beacon[0].ap.property.in_cache && !ctx->beacon[i].ap.vg_len)
             reject = 0;
-        else if (!ctx->beacon[NUM_APS(ctx) - 1].ap.property.in_cache)
+        else if (!ctx->beacon[NUM_APS(ctx) - 1].ap.property.in_cache && !ctx->beacon[i].ap.vg_len)
             reject = NUM_APS(ctx) - 1;
     }
     if (reject == -1) {
@@ -365,22 +419,22 @@ static Sky_status_t filter_by_rssi(Sky_ctx_t *ctx)
 #if SKY_DEBUG
     for (i = 0; i < NUM_APS(ctx); i++) {
         b = &ctx->beacon[i];
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "%s: %-2d, %s ideal %d.%02d fit %2d.%02d (%d)",
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "%s: %-2d, %s ideal %d.%02d fit %2d.%02d (%d) vap: %d",
             (reject == i) ? "remove" : "      ", i,
             b->ap.property.in_cache ? b->ap.property.used ? "Used  " : "Unused" : "      ",
             (int)ideal_rssi[i], (int)fabs(round(100 * (ideal_rssi[i] - (int)ideal_rssi[i]))),
             (int)fabs(NOMINAL_RSSI(b->ap.rssi) - ideal_rssi[i]), ideal_rssi[i],
             (int)fabs(round(100 * (fabs(NOMINAL_RSSI(b->ap.rssi) - ideal_rssi[i]) -
                                       (int)fabs(NOMINAL_RSSI(b->ap.rssi) - ideal_rssi[i])))),
-            b->ap.rssi);
+            b->ap.rssi, b->ap.vg_len);
     }
 #endif
     return remove_beacon(ctx, reject);
 }
 
-/*! \brief try to reduce AP by filtering out virtual AP
- *         When similar, remove beacon with highesr mac address
- *         unless it is in cache, then choose to remove the uncached beacon
+/*! \brief try to reduce AP from workspace by compressing virtual APs
+ *         When similar, beacon with lowest mac address becomes Group parent
+ *         remove the other AP and add it as child of parent
  *
  *  @param ctx Skyhook request context
  *
@@ -388,7 +442,7 @@ static Sky_status_t filter_by_rssi(Sky_ctx_t *ctx)
  */
 static Sky_status_t remove_virtual_ap(Sky_ctx_t *ctx)
 {
-    int i, j, d = -1;
+    int i, j, n = -1;
     int cmp = 0, rm = -1;
     int keep = -1;
 #if SKY_DEBUG
@@ -415,47 +469,24 @@ static Sky_status_t remove_virtual_ap(Sky_ctx_t *ctx)
 
     for (j = 0; j < ctx->ap_len - 1; j++) {
 #if VERBOSE_DEBUG
-        b = &ctx->beacon[j];
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cmp MAC %02X:%02X:%02X:%02X:%02X:%02X %d", b->ap.mac[0],
-            b->ap.mac[1], b->ap.mac[2], b->ap.mac[3], b->ap.mac[4], b->ap.mac[5], cmp);
+        dump_ap(ctx, "cmp", &ctx->beacon[j]);
 #endif
         for (i = j + 1; i < ctx->ap_len; i++) {
-            if ((cmp = similar(ctx->beacon[i].ap.mac, ctx->beacon[j].ap.mac, &d)) < 0) {
-                if (ctx->beacon[j].ap.property.in_cache) {
-                    rm = i;
-                    keep = j;
-#if SKY_DEBUG
-                    cached = true;
-#endif
-                } else {
-                    rm = j;
-                    keep = i;
-                }
+            if ((cmp = ap_similar(ctx, &ctx->beacon[i], &ctx->beacon[j], &n)) < 0) {
+                rm = j;
+                keep = i;
             } else if (cmp > 0) {
-                if (ctx->beacon[i].ap.property.in_cache) {
-                    rm = j;
-                    keep = i;
-#if SKY_DEBUG
-                    cached = true;
-#endif
-                } else {
-                    rm = i;
-                    keep = j;
-                }
+                rm = i;
+                keep = j;
             }
-#if VERBOSE_DEBUG
-            b = &ctx->beacon[i];
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "    MAC %02X:%02X:%02X:%02X:%02X:%02X %d",
-                b->ap.mac[0], b->ap.mac[1], b->ap.mac[2], b->ap.mac[3], b->ap.mac[4], b->ap.mac[5],
-                cmp);
-#endif
+            /* if similar, remove and save child virtual AP */
             if (rm != -1) {
                 dump_workspace(ctx);
 #if SKY_DEBUG
                 LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "remove_beacon: %d similar to %d%s at nibble %d",
-                    rm, keep, cached ? " (cached)" : "", d);
+                    rm, keep, cached ? " (cached)" : "", n);
 #endif
-                if (!add_vap(ctx, keep, rm, d)) {
+                if (!add_child_to_VirtualGroup(ctx, keep, rm, n)) {
                     LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "Didn't save Virtual AP");
                 }
                 remove_beacon(ctx, rm);
@@ -546,16 +577,8 @@ Sky_status_t add_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon_t *b, boo
         c = &ctx->cache->cacheline[ctx->cache->newest].beacon[j];
         if (w->ap.property.in_cache) {
             w->ap.property.used = c->ap.property.used;
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                "Cached Beacon %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz",
-                j, c->ap.age, c->ap.property.used ? "Used  " : "Unused", c->ap.mac[0], c->ap.mac[1],
-                c->ap.mac[2], c->ap.mac[3], c->ap.mac[4], c->ap.mac[5], c->ap.rssi, c->ap.freq);
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                "Worksp Beacon %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz",
-                i, w->ap.age,
-                w->ap.property.in_cache ? (w->ap.property.used ? "Used  " : "Unused") : "      ",
-                w->ap.mac[0], w->ap.mac[1], w->ap.mac[2], w->ap.mac[3], w->ap.mac[4], w->ap.mac[5],
-                w->ap.rssi, w->ap.freq);
+            dump_ap(ctx, "Cached Beacon", c);
+            dump_ap(ctx, "Worksp Beacon", w);
         } else
             w->ap.property.used = false;
 
@@ -606,7 +629,6 @@ static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl, in
         return false;
     }
 
-    /* score each cache line wrt beacon match ratio */
     for (j = 0; ret == false && j < NUM_BEACONS(cl); j++)
         if (b->h.type == cl->beacon[j].h.type) {
             switch (b->h.type) {
