@@ -299,34 +299,85 @@ int log_buffer(const char *file, const char *function, Sky_ctx_t *ctx, Sky_log_l
  *
  *  @param ctx workspace pointer
  *  @param idx index of Virtual Group AP
- *  @param b beacon
  *
- *  @returns 0 for success or negative number for error
+ *  @returns void
  */
-void dump_vap(Sky_ctx_t *ctx, int i, Beacon_t *b)
+void dump_vap(Sky_ctx_t *ctx, Beacon_t *b)
 {
 #if SKY_DEBUG
-    int j, d, n;
-    uint8_t *vap = b->ap.vg;
+    int j, n, value;
+    Vap_t *vap = b->ap.vg;
     uint8_t mac[MAC_SIZE];
+    int idx_b;
 
-    if (!b || !vap || !b->ap.vg_len)
+    /* Test whether beacon is in cache or workspace */
+    if (b >= ctx->beacon && b < ctx->beacon + MAX_AP_BEACONS)
+        idx_b = b - ctx->beacon;
+    else if (b >= ctx->cache->cacheline[0].beacon && b < ctx->cache->cacheline[CACHE_SIZE].beacon) {
+        idx_b = b - ctx->cache->cacheline[0].beacon;
+        idx_b %= MAX_AP_BEACONS;
+    } else
+        idx_b = 0;
+    if (idx_b > MAX_AP_BEACONS || idx_b < 0) {
+        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Out of bounds!");
         return;
+    }
+    if (!b->ap.vg_len)
+        return;
+
     for (j = 0; j < b->ap.vg_len; j++) {
         memcpy(mac, b->ap.mac, MAC_SIZE);
-        d = (vap[j] >> 4) & 0x0F;
-        n = vap[j] & 0x0F;
-        if (d & 1)
-            mac[d / 2] = ((mac[d / 2] & 0xF0) | n);
+        n = vap[j].nibble_idx;
+        value = vap[j].value;
+        if (n & 1)
+            mac[n / 2] = ((mac[n / 2] & 0xF0) | value);
         else
-            mac[d / 2] = ((mac[d / 2] & 0x0F) | (n << 4));
+            mac[n / 2] = ((mac[n / 2] & 0x0F) | (value << 4));
 
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-            " Virt AP %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz VAP(%01X %01X)",
-            i, b->ap.age,
-            b->ap.property.in_cache ? (b->ap.property.used ? "Used  " : "Unused") : "      ",
-            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], b->ap.rssi, b->ap.freq, d, n);
+            "VirtAP %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz VAP(%01X %01X)",
+            idx_b, b->ap.age, " ^^^^ ", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], b->ap.rssi,
+            b->ap.freq, n, value);
     }
+#endif
+}
+
+/*! \brief dump AP
+ *
+ *  @param ctx workspace pointer
+ *  @param str comment
+ *  @param b pointer to Beacon_t structure
+ *
+ *  @returns void
+ */
+void dump_ap(Sky_ctx_t *ctx, char *str, Beacon_t *b)
+{
+#if SKY_DEBUG
+    int idx_b, cached = 0;
+
+    if (str == NULL)
+        str = "AP:";
+    /* Test whether beacon is in cache or workspace */
+    if (b >= ctx->beacon && b < ctx->beacon + MAX_AP_BEACONS)
+        idx_b = b - ctx->beacon;
+    else if (b >= ctx->cache->cacheline[0].beacon && b < ctx->cache->cacheline[CACHE_SIZE].beacon) {
+        cached = 1;
+        idx_b = b - ctx->cache->cacheline[0].beacon;
+        idx_b %= MAX_AP_BEACONS;
+    } else
+        idx_b = 0;
+    if (idx_b > MAX_AP_BEACONS || idx_b < 0) {
+        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Out of bounds!");
+        return;
+    }
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
+        "%s %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz vap: %d",
+        str, idx_b, b->ap.age,
+        (cached || b->ap.property.in_cache) ? (b->ap.property.used ? "Used  " : "Unused") :
+                                              "      ",
+        b->ap.mac[0], b->ap.mac[1], b->ap.mac[2], b->ap.mac[3], b->ap.mac[4], b->ap.mac[5],
+        b->ap.rssi, b->ap.freq, b->ap.vg_len);
+    dump_vap(ctx, b);
 #endif
 }
 
@@ -346,6 +397,7 @@ void dump_workspace(Sky_ctx_t *ctx)
     for (i = 0; i < ctx->len; i++) {
         switch (ctx->beacon[i].h.type) {
         case SKY_BEACON_AP:
+            /*
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                 " Beacon %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz vap: %d",
                 i, ctx->beacon[i].ap.age,
@@ -355,7 +407,9 @@ void dump_workspace(Sky_ctx_t *ctx)
                 ctx->beacon[i].ap.mac[0], ctx->beacon[i].ap.mac[1], ctx->beacon[i].ap.mac[2],
                 ctx->beacon[i].ap.mac[3], ctx->beacon[i].ap.mac[4], ctx->beacon[i].ap.mac[5],
                 ctx->beacon[i].ap.rssi, ctx->beacon[i].ap.freq, ctx->beacon[i].ap.vg_len);
-            dump_vap(ctx, i, &ctx->beacon[i]);
+            dump_vap(ctx, i);
+            */
+            dump_ap(ctx, " Beacon", &ctx->beacon[i]);
             break;
         case SKY_BEACON_CDMA:
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
@@ -441,13 +495,7 @@ void dump_cache(Sky_ctx_t *ctx)
                 b = &c->beacon[j];
                 switch (b->h.type) {
                 case SKY_BEACON_AP:
-                    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                        " Beacon %-2d:%-2d: WiFi, MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d, %-4d MHz vap: %d %s",
-                        i, j, b->ap.mac[0], b->ap.mac[1], b->ap.mac[2], b->ap.mac[3], b->ap.mac[4],
-                        b->ap.mac[5], b->ap.rssi, b->ap.freq, b->ap.vg_len,
-                        b->ap.property.used ? "Used" : "Unused");
-                    if (b->ap.vg_len)
-                        dump_vap(ctx, j, b);
+                    dump_ap(ctx, " Beacon", b);
                     break;
                 case SKY_BEACON_CDMA:
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
@@ -1547,7 +1595,7 @@ int64_t get_vap_delta(Sky_ctx_t *ctx, uint32_t idx)
     for (j = 0; j < NUM_APS(ctx); j++) {
         w = &ctx->beacon[j];
         if (nv + w->ap.vg_len > idx)
-            return ((j + 1) << 8) | w->ap.vg[idx - nv];
+            return ((j + 1) << 8) | (w->ap.vg[idx - nv].nibble_idx) | (w->ap.vg[idx - nv].value);
         else
             nv += w->ap.vg_len;
     }

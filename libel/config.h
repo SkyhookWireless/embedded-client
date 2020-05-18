@@ -35,9 +35,9 @@
 /*! \brief The maximum number of AP beacons passed to the server in a request
  */
 #define MAX_AP_BEACONS 10
-/*! \brief The maximum number of Virtual APs in a Virtual group
+/*! \brief The maximum number of child APs in a Virtual Group
  */
-#define MAX_VAP 100
+#define MAX_VAP 10
 
 /*! \brief The percentage of beacons that must match in a cached scan/location
  */
@@ -61,7 +61,7 @@
 
 /*! \brief The number of entries in the scan/response cache
  */
-#define CACHE_SIZE 0
+#define CACHE_SIZE 1
 
 /*! \brief The maximum space the dynamic configuration parameters may take up in bytes
  */
