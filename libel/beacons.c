@@ -30,12 +30,10 @@
 #define SKY_LIBEL 1
 #include "libel.h"
 
-/* #define VERBOSE_DEBUG 1 */
+#define VERBOSE_DEBUG 1
 
 #define MIN(x, y) ((x) > (y) ? (y) : (x))
 #define NOMINAL_RSSI(b) ((b) == -1 ? (-90) : (b))
-#define PUT_IN_CACHE true
-#define GET_FROM_CACHE false
 
 void dump_workspace(Sky_ctx_t *ctx);
 void dump_cache(Sky_ctx_t *ctx);
@@ -76,9 +74,11 @@ static int mac_similar(Sky_ctx_t *ctx, uint8_t macA[], uint8_t macB[], int *pn)
             result = macA[n / 2] - macB[n / 2];
         }
     }
+#ifdef VERBOSE_DEBUG
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "idx: %d A: 0x%02X B:0x%02X", idx_diff, macA[0], macB[0]);
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "idx: %d A: 0x%02X B:0x%02X", idx_diff,
         LOCAL_ADMIN_MASK(macA[0]), LOCAL_ADMIN_MASK(macB[0]));
+#endif
     /* Only one nibble different, but is the Local Administrative bit different */
     if (LOCAL_ADMIN_MASK(macA[0]) != LOCAL_ADMIN_MASK(macB[0])) {
         return 0; /* not similar */
@@ -107,21 +107,27 @@ static int ap_similar(Sky_ctx_t *ctx, Beacon_t *apA, Beacon_t *apB, int *pn)
     /* APs have similar mac addresses, but are any members of the virtual groups similar */
     /* Check that children have difference in same nibble */
     for (v = 0; v < apA->ap.vg_len; v++)
-        if (apA->ap.vg[v].nibble_idx != n) {
+        if (apA->ap.vg[v + VAP_FIRST_DATA].data.nibble_idx != n) {
+#if VERBOSE_DEBUG
             dump_ap(ctx, "Mismatch A*", apA);
             dump_ap(ctx, "         B ", apB);
+#endif
             return 0;
         }
     for (v = 0; v < apB->ap.vg_len; v++)
-        if (apB->ap.vg[v].nibble_idx != n) {
+        if (apB->ap.vg[v + VAP_FIRST_DATA].data.nibble_idx != n) {
+#if VERBOSE_DEBUG
             dump_ap(ctx, "Mismatch A ", apA);
             dump_ap(ctx, "         B*", apB);
+#endif
             return 0;
         }
     if (pn)
         *pn = n;
+#if VERBOSE_DEBUG
     dump_ap(ctx, "Match A ", apA);
     dump_ap(ctx, "      B ", apB);
+#endif
     return b;
 }
 
@@ -158,7 +164,7 @@ static uint8_t nibble(uint8_t *mac, int d)
 static bool add_child_to_VirtualGroup(Sky_ctx_t *ctx, int vg, int ap, int n)
 {
     Beacon_t *parent, *child;
-    int ap_p, ap_c, dup;
+    int vg_p, vg_c, dup;
     uint8_t replace; /* value of nibble in child */
     Vap_t patch; /* how to patch parent mac to create child mac */
     Vap_t *pvg; /* the list of patches in parent AP */
@@ -176,19 +182,28 @@ static bool add_child_to_VirtualGroup(Sky_ctx_t *ctx, int vg, int ap, int n)
     if ((replace = nibble(child->ap.mac, n)) == 0xff)
         return false;
 
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, " nib: %d value: 0x%02X", n, replace);
+
     pvg = parent->ap.vg;
-    patch.nibble_idx = n;
-    patch.value = replace;
+    patch.data.nibble_idx = n;
+    patch.data.value = replace;
+
+    if (pvg[VAP_LENGTH].len == 0) {
+        pvg[VAP_LENGTH].len = 2; /* length of patch bytes */
+        pvg[VAP_PARENT].ap = vg; /* index of the parent AP */
+    }
 
     /* ignore child if user has added same AP before */
-    for (dup = ap_p = 0; ap_p < parent->ap.vg_len; ap_p++) {
-        if (pvg[ap_p].nibble_idx == patch.nibble_idx && pvg[ap_p].value == patch.value)
+    for (dup = vg_p = 0; vg_p < parent->ap.vg_len; vg_p++) {
+        if (pvg[vg_p + VAP_FIRST_DATA].data.nibble_idx == patch.data.nibble_idx &&
+            pvg[vg_p + VAP_FIRST_DATA].data.value == patch.data.value)
             dup = 1;
     }
-    if (!dup && ap_p == MAX_VAP) /* No room for one more */
+    if (!dup && vg_p == MAX_VAP) /* No room for one more */
         return false;
 
-    /* update parent rssi with proportion of child rssi */
+        /* update parent rssi with proportion of child rssi */
+#if SKY_DEBUG
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, " Virt members Parent: %d, Child: %d", parent->ap.vg_len + 1,
         child->ap.vg_len + 1);
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, " Parent rssi updated from: %d, to: %.1f", parent->ap.rssi,
@@ -196,6 +211,7 @@ static bool add_child_to_VirtualGroup(Sky_ctx_t *ctx, int vg, int ap, int n)
             ((parent->ap.vg_len + 1) + (child->ap.vg_len + 1))) +
             (child->ap.rssi * (float)(child->ap.vg_len + 1) /
                 ((parent->ap.vg_len + 1) + (child->ap.vg_len + 1))));
+#endif
     parent->ap.rssi = (parent->ap.rssi * (float)(parent->ap.vg_len + 1) /
                           ((parent->ap.vg_len + 1) + (child->ap.vg_len + 1))) +
                       (child->ap.rssi * (float)(child->ap.vg_len + 1) /
@@ -207,27 +223,35 @@ static bool add_child_to_VirtualGroup(Sky_ctx_t *ctx, int vg, int ap, int n)
 
     /* Add child unless it is already a member in the parent group */
     if (!dup) {
-        pvg[ap_p] = patch;
-        parent->ap.vg_len = ap_p + 1;
+        pvg[vg_p + VAP_FIRST_DATA].data = patch.data;
+        pvg[VAP_LENGTH].len = vg_p + VAP_FIRST_DATA;
+        parent->ap.vg_len = vg_p + 1;
     }
 
     /* Add any Virtual APs from child */
-    for (ap_c = 0; ap_c < child->ap.vg_len; ap_c++) {
-        for (ap_p = 0; ap_p < parent->ap.vg_len - 1; ap_p++) {
+    for (vg_c = 0; vg_c < child->ap.vg_len; vg_c++) {
+        for (vg_p = 0; vg_p < parent->ap.vg_len; vg_p++) {
+            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, " add child: %d to parent: %d", vg_c, vg_p);
             /* Ignore any duplicates */
-            if (pvg[ap_p].nibble_idx == child->ap.vg[ap_c].nibble_idx &&
-                pvg[ap_p].value == child->ap.vg[ap_c].value)
+            if (pvg[vg_p + VAP_FIRST_DATA].data.nibble_idx ==
+                    child->ap.vg[vg_c + VAP_FIRST_DATA].data.nibble_idx &&
+                pvg[vg_p + VAP_FIRST_DATA].data.value ==
+                    child->ap.vg[vg_c + VAP_FIRST_DATA].data.value) {
+                dump_ap(ctx, " Child dup", child);
                 break;
+            }
         }
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "   child: %d to parent: %d", vg_c, vg_p);
         /* copy child to parent if not already a member */
-        if (ap_p == parent->ap.vg_len) {
-            if (ap_p == MAX_VAP) {
+        if (vg_p == parent->ap.vg_len) {
+            if (vg_p == MAX_VAP) {
                 LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "No room to keep all Virtual APs");
                 return false;
             }
-            pvg[ap_p].nibble_idx = child->ap.vg[ap_c].nibble_idx;
-            pvg[ap_p].value = child->ap.vg[ap_c].value;
-            parent->ap.vg_len = ap_p + 1;
+            dump_ap(ctx, " Child add", child);
+            pvg[vg_p + VAP_FIRST_DATA].data = child->ap.vg[vg_c + VAP_FIRST_DATA].data;
+            pvg[VAP_LENGTH].len = vg_p + VAP_FIRST_DATA;
+            parent->ap.vg_len = vg_p + 1;
         }
     }
 
@@ -432,7 +456,7 @@ static Sky_status_t filter_by_rssi(Sky_ctx_t *ctx)
     return remove_beacon(ctx, reject);
 }
 
-/*! \brief try to reduce AP from workspace by compressing virtual APs
+/*! \brief try to make space in workspace by compressing a virtual AP
  *         When similar, beacon with lowest mac address becomes Group parent
  *         remove the other AP and add it as child of parent
  *
@@ -440,16 +464,13 @@ static Sky_status_t filter_by_rssi(Sky_ctx_t *ctx)
  *
  *  @return SKY_SUCCESS if beacon removed or SKY_ERROR otherwise
  */
-static Sky_status_t remove_virtual_ap(Sky_ctx_t *ctx)
+static Sky_status_t compress_virtual_ap(Sky_ctx_t *ctx)
 {
     int i, j, n = -1;
     int cmp = 0, rm = -1;
     int keep = -1;
 #if SKY_DEBUG
     bool cached = false;
-#if VERBOSE_DEBUG
-    Beacon_t *b;
-#endif
 #endif
 
     LOGFMT(
@@ -481,7 +502,6 @@ static Sky_status_t remove_virtual_ap(Sky_ctx_t *ctx)
             }
             /* if similar, remove and save child virtual AP */
             if (rm != -1) {
-                dump_workspace(ctx);
 #if SKY_DEBUG
                 LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "remove_beacon: %d similar to %d%s at nibble %d",
                     rm, keep, cached ? " (cached)" : "", n);
@@ -591,7 +611,7 @@ Sky_status_t add_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon_t *b, boo
 
     /* beacon is AP and is subject to filtering */
     /* discard virtual duplicates of remove one based on rssi distribution */
-    if (remove_virtual_ap(ctx) == SKY_ERROR) {
+    if (compress_virtual_ap(ctx) == SKY_ERROR) {
         if (filter_by_rssi(ctx) == SKY_ERROR) {
             LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "failed to filter");
             return sky_return(sky_errno, SKY_ERROR_BAD_PARAMETERS);
