@@ -125,8 +125,8 @@ int64_t get_gnss_bearing(Sky_ctx_t *ctx, uint32_t idx);
 int64_t get_gnss_nsat(Sky_ctx_t *ctx, uint32_t idx);
 int64_t get_gnss_age(Sky_ctx_t *ctx, uint32_t idx);
 
-int32_t get_num_vap_delta(Sky_ctx_t *ctx);
-int64_t get_vap_delta(Sky_ctx_t *ctx, uint32_t idx);
+int32_t get_num_vaps(Sky_ctx_t *ctx);
+uint8_t *get_vap_data(Sky_ctx_t *ctx, uint32_t idx);
 
 int sky_rand_fn(uint8_t *rand_buf, uint32_t bufsize);
 #endif

@@ -37,6 +37,11 @@
 #define NUM_BEACONS(p) ((p)->len)
 #define IMPLIES(a, b) (!(a) || (b))
 
+/* VAP data is prefixed by length and AP index */
+#define VAP_LENGTH (0)
+#define VAP_PARENT (1)
+#define VAP_FIRST_DATA (2)
+
 /*! \brief Types of beacon
  */
 typedef enum {
@@ -64,9 +69,13 @@ struct header {
 
 /*! \brief Virtual AP member
  */
-typedef struct {
-    uint8_t nibble_idx : 4; /* 0-11 index into mac address by nibble */
-    uint8_t value : 4; /* replacement value for the nibble indexed */
+typedef union {
+    struct {
+        uint8_t nibble_idx : 4; /* 0-11 index into mac address by nibble */
+        uint8_t value : 4; /* replacement value for the nibble indexed */
+    } data;
+    uint8_t len; /* number of bytes in child patch data */
+    uint8_t ap; /* index of parent AP */
 } Vap_t;
 
 /*! \brief Access Point data
@@ -80,7 +89,7 @@ struct ap {
     uint32_t freq;
     int16_t rssi;
     uint8_t vg_len;
-    Vap_t vg[MAX_VAP]; /* Virtual APs */
+    Vap_t vg[MAX_VAP + 2]; /* Virtual APs */
 };
 
 // http://wiki.opencellid.org/wiki/API

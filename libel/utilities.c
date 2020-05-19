@@ -311,7 +311,7 @@ void dump_vap(Sky_ctx_t *ctx, Beacon_t *b)
     int idx_b;
 
     /* Test whether beacon is in cache or workspace */
-    if (b >= ctx->beacon && b < ctx->beacon + MAX_AP_BEACONS)
+    if (b >= ctx->beacon && b < ctx->beacon + MAX_AP_BEACONS + 1)
         idx_b = b - ctx->beacon;
     else if (b >= ctx->cache->cacheline[0].beacon && b < ctx->cache->cacheline[CACHE_SIZE].beacon) {
         idx_b = b - ctx->cache->cacheline[0].beacon;
@@ -327,8 +327,8 @@ void dump_vap(Sky_ctx_t *ctx, Beacon_t *b)
 
     for (j = 0; j < b->ap.vg_len; j++) {
         memcpy(mac, b->ap.mac, MAC_SIZE);
-        n = vap[j].nibble_idx;
-        value = vap[j].value;
+        n = vap[j + 2].data.nibble_idx;
+        value = vap[j + 2].data.value;
         if (n & 1)
             mac[n / 2] = ((mac[n / 2] & 0xF0) | value);
         else
@@ -358,9 +358,11 @@ void dump_ap(Sky_ctx_t *ctx, char *str, Beacon_t *b)
     if (str == NULL)
         str = "AP:";
     /* Test whether beacon is in cache or workspace */
-    if (b >= ctx->beacon && b < ctx->beacon + MAX_AP_BEACONS)
+    if (b >= ctx->beacon && b < ctx->beacon + MAX_AP_BEACONS + 1)
         idx_b = b - ctx->beacon;
-    else if (b >= ctx->cache->cacheline[0].beacon && b < ctx->cache->cacheline[CACHE_SIZE].beacon) {
+    else if (b >= ctx->cache->cacheline[0].beacon &&
+             b < ctx->cache->cacheline[CACHE_SIZE].beacon +
+                     ctx->cache->cacheline[CACHE_SIZE].ap_len) {
         cached = 1;
         idx_b = b - ctx->cache->cacheline[0].beacon;
         idx_b %= MAX_AP_BEACONS;
@@ -1551,37 +1553,43 @@ int64_t get_gnss_age(Sky_ctx_t *ctx, uint32_t idx)
     return ctx->gps.age;
 }
 
-/*! \brief field extraction for dynamic use of Nanopb (num vap_delta)
+/*! \brief field extraction for dynamic use of Nanopb (num vaps)
  *
  *  @param ctx workspace buffer
  *
  *  @return number of bytes of compressed Virtual APs
  */
-int32_t get_num_vap_delta(Sky_ctx_t *ctx)
+int32_t get_num_vaps(Sky_ctx_t *ctx)
 {
     int j, nv = 0;
     Beacon_t *w;
 
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "ap");
     if (ctx == NULL) {
         // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     for (j = 0; j < NUM_APS(ctx); j++) {
         w = &ctx->beacon[j];
-        nv += w->ap.vg_len;
+        /* Complete the virtual group patch bytes with index of parent */
+        w->ap.vg[VAP_PARENT].ap = j;
+        nv += (w->ap.vg_len ? 1 : 0);
+        if (w->ap.vg_len)
+            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "ap: %d total: %d vap: %d len: %d",
+                w->ap.vg[VAP_PARENT].ap, nv, w->ap.vg_len, w->ap.vg[VAP_LENGTH].len);
     }
 
     return nv;
 }
 
-/*! \brief field extraction for dynamic use of Nanopb (vap_delta)
+/*! \brief field extraction for dynamic use of Nanopb (vap_data)
  *
  *  @param ctx workspace buffer
- *  @param idx index into Virtual APs
+ *  @param idx index into Virtual Groups
  *
- *  @return beacon is_connected info
+ *  @return vaps data i.e len, AP, patch1, patch2...
  */
-int64_t get_vap_delta(Sky_ctx_t *ctx, uint32_t idx)
+uint8_t *get_vap_data(Sky_ctx_t *ctx, uint32_t idx)
 {
     int j, nv = 0;
     Beacon_t *w;
@@ -1590,14 +1598,19 @@ int64_t get_vap_delta(Sky_ctx_t *ctx, uint32_t idx)
         // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
-    /* Walk through APs, when the idx is within Virtual Group of current AP */
-    /* return the Virtual AP delta with the index of the current AP plus one */
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "idx: %d", idx);
+    /* Walk through APs counting vap, when the idx is the current Virtual Group */
+    /* return the Virtual AP data */
     for (j = 0; j < NUM_APS(ctx); j++) {
         w = &ctx->beacon[j];
-        if (nv + w->ap.vg_len > idx)
-            return ((j + 1) << 8) | (w->ap.vg[idx - nv].nibble_idx) | (w->ap.vg[idx - nv].value);
-        else
-            nv += w->ap.vg_len;
+        if ((w->ap.vg_len ? 1 : 0) && nv == idx) {
+            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "AP: %d idx: %d len: %d ap: %d", j, idx,
+                w->ap.vg[VAP_LENGTH].len, w->ap.vg[VAP_PARENT].ap);
+            dump_hex16(__FILE__, __FUNCTION__, ctx, SKY_LOG_LEVEL_DEBUG, w->ap.vg + 1,
+                w->ap.vg[VAP_LENGTH].len, 0);
+            return (uint8_t *)w->ap.vg;
+        } else
+            nv += (w->ap.vg_len ? 1 : 0);
     }
     return 0;
 }

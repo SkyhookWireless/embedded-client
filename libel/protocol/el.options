@@ -1,4 +1,5 @@
 Rq.aps           type:FT_CALLBACK, callback_datatype:"void*"
+Rq.vaps          type:FT_CALLBACK, callback_datatype:"void*"
 Rq.gsm_cells     type:FT_CALLBACK, callback_datatype:"void*"
 Rq.nbiot_cells   type:FT_CALLBACK, callback_datatype:"void*"
 Rq.umts_cells    type:FT_CALLBACK, callback_datatype:"void*"

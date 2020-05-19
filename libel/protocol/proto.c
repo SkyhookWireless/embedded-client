@@ -33,12 +33,15 @@
 #include "proto.h"
 #include "aes.h"
 
+int dump_hex16(const char *file, const char *function, Sky_ctx_t *ctx, Sky_log_level_t level,
+    void *buffer, uint32_t bufsize, int buf_offset);
 static bool apply_config_overrides(Sky_cache_t *c, Rs *rs);
 static int64_t get_gnss_lat_scaled(Sky_ctx_t *ctx, uint32_t idx);
 static int64_t get_gnss_lon_scaled(Sky_ctx_t *ctx, uint32_t idx);
 static int64_t get_gnss_alt_scaled(Sky_ctx_t *ctx, uint32_t idx);
 static int64_t get_gnss_speed_scaled(Sky_ctx_t *ctx, uint32_t idx);
 
+typedef uint8_t *(*DataGetterb)(Sky_ctx_t *, uint32_t);
 typedef int64_t (*DataGetter)(Sky_ctx_t *, uint32_t);
 typedef float (*DataGetterf)(Sky_ctx_t *, uint32_t);
 typedef int64_t (*DataWrapper)(int64_t);
@@ -105,6 +108,44 @@ static bool encode_repeated_int_field(Sky_ctx_t *ctx, pb_ostream_t *ostream, uin
     return true;
 }
 
+static bool encode_repeated_vap_data(
+    Sky_ctx_t *ctx, pb_ostream_t *ostream, uint32_t tag, uint32_t num_elems, DataGetterb getter)
+{
+    size_t i;
+
+    // Get and encode the field size.
+    pb_ostream_t substream = PB_OSTREAM_SIZING;
+
+    // Encode field tag.
+    if (!pb_encode_tag(ostream, PB_WT_STRING, tag))
+        return false;
+
+    for (i = 0; i < num_elems; i++) {
+        uint8_t *data = getter(ctx, i);
+
+        /* *data == len, data + 1 == first byte of data */
+        if (!pb_encode_string(&substream, data + 1, *data))
+            return false;
+    }
+
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "length %d", substream.bytes_written);
+    if (!pb_encode_varint(ostream, substream.bytes_written))
+        return false;
+
+    // Now encode the field for real.
+    for (i = 0; i < num_elems; i++) {
+        uint8_t *data = getter(ctx, i);
+
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "string length %d", *data);
+        dump_hex16(__FILE__, __FUNCTION__, ctx, SKY_LOG_LEVEL_DEBUG, data + 1, *data, 0);
+        /* *data == len, data + 1 == first byte of data */
+        if (!pb_encode_string(&substream, data + 1, *data))
+            return false;
+    }
+
+    return true;
+}
+
 static bool encode_connected_field(Sky_ctx_t *ctx, pb_ostream_t *ostream, uint32_t num_beacons,
     uint32_t tag, bool (*callback)(Sky_ctx_t *, uint32_t idx))
 {
@@ -146,8 +187,8 @@ static bool encode_optimized_repeated_field(Sky_ctx_t *ctx, pb_ostream_t *ostrea
 static bool encode_ap_fields(Sky_ctx_t *ctx, pb_ostream_t *ostream)
 {
     uint32_t num_beacons = get_num_aps(ctx);
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "num ap %d", num_beacons);
 
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "num vap %d", get_num_vap_delta(ctx));
     return encode_connected_field(
                ctx, ostream, num_beacons, Aps_connected_idx_plus_1_tag, get_ap_is_connected) &&
            encode_repeated_int_field(ctx, ostream, Aps_mac_tag, num_beacons, mac_to_int, NULL) &&
@@ -156,9 +197,15 @@ static bool encode_ap_fields(Sky_ctx_t *ctx, pb_ostream_t *ostream)
            encode_repeated_int_field(
                ctx, ostream, Aps_neg_rssi_tag, num_beacons, get_ap_rssi, flip_sign) &&
            encode_optimized_repeated_field(
-               ctx, ostream, num_beacons, Aps_common_age_plus_1_tag, Aps_age_tag, get_ap_age) &&
-           encode_repeated_int_field(
-               ctx, ostream, Aps_vap_delta_tag, get_num_vap_delta(ctx), get_vap_delta, NULL);
+               ctx, ostream, num_beacons, Aps_common_age_plus_1_tag, Aps_age_tag, get_ap_age);
+}
+
+static bool encode_vap_fields(Sky_ctx_t *ctx, pb_ostream_t *ostream)
+{
+    uint32_t num_beacons = get_num_vaps(ctx);
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "num vap %d", num_beacons);
+
+    return encode_repeated_vap_data(ctx, ostream, Vaps_vap_tag, num_beacons, get_vap_data);
 }
 
 static bool encode_cdma_fields(Sky_ctx_t *ctx, pb_ostream_t *ostream)
@@ -310,8 +357,14 @@ bool Rq_callback(pb_istream_t *istream, pb_ostream_t *ostream, const pb_field_t 
     //
     switch (field->tag) {
     case Rq_aps_tag:
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "aps");
         if (get_num_aps(ctx))
             return encode_submessage(ctx, ostream, field->tag, encode_ap_fields);
+        break;
+    case Rq_vaps_tag:
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "vaps");
+        if (get_num_vaps(ctx))
+            return encode_submessage(ctx, ostream, field->tag, encode_vap_fields);
         break;
     case Rq_cdma_cells_tag:
         if (get_num_cdma(ctx))
@@ -378,8 +431,8 @@ int32_t serialize_request(
 
     memset(&rq, 0, sizeof(rq));
 
-    rq.aps = rq.gsm_cells = rq.nbiot_cells = rq.cdma_cells = rq.lte_cells = rq.umts_cells =
-        rq.gnss = ctx;
+    rq.aps = rq.vaps = rq.gsm_cells = rq.nbiot_cells = rq.cdma_cells = rq.lte_cells =
+        rq.umts_cells = rq.gnss = ctx;
 
     rq.timestamp = (int64_t)(*ctx->gettime)(NULL);
 
