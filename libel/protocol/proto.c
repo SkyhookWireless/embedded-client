@@ -108,7 +108,7 @@ static bool encode_repeated_int_field(Sky_ctx_t *ctx, pb_ostream_t *ostream, uin
     return true;
 }
 
-static bool encode_repeated_vap_data(
+static bool encode_vap_data(
     Sky_ctx_t *ctx, pb_ostream_t *ostream, uint32_t tag, uint32_t num_elems, DataGetterb getter)
 {
     size_t i;
@@ -139,7 +139,7 @@ static bool encode_repeated_vap_data(
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "string length %d", *data);
         dump_hex16(__FILE__, __FUNCTION__, ctx, SKY_LOG_LEVEL_DEBUG, data + 1, *data, 0);
         /* *data == len, data + 1 == first byte of data */
-        if (!pb_encode_string(&substream, data + 1, *data))
+        if (!pb_encode_string(ostream, data + 1, *data))
             return false;
     }
 
@@ -198,14 +198,6 @@ static bool encode_ap_fields(Sky_ctx_t *ctx, pb_ostream_t *ostream)
                ctx, ostream, Aps_neg_rssi_tag, num_beacons, get_ap_rssi, flip_sign) &&
            encode_optimized_repeated_field(
                ctx, ostream, num_beacons, Aps_common_age_plus_1_tag, Aps_age_tag, get_ap_age);
-}
-
-static bool encode_vap_fields(Sky_ctx_t *ctx, pb_ostream_t *ostream)
-{
-    uint32_t num_beacons = get_num_vaps(ctx);
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "num vap %d", num_beacons);
-
-    return encode_repeated_vap_data(ctx, ostream, Vaps_vap_tag, num_beacons, get_vap_data);
 }
 
 static bool encode_cdma_fields(Sky_ctx_t *ctx, pb_ostream_t *ostream)
@@ -351,6 +343,7 @@ static bool encode_submessage(
 bool Rq_callback(pb_istream_t *istream, pb_ostream_t *ostream, const pb_field_t *field)
 {
     Sky_ctx_t *ctx = *(Sky_ctx_t **)field->pData;
+    int num_vaps;
 
     // Per the documentation here:
     // https://jpa.kapsi.fi/nanopb/docs/reference.html#pb-encode-delimited
@@ -363,8 +356,8 @@ bool Rq_callback(pb_istream_t *istream, pb_ostream_t *ostream, const pb_field_t 
         break;
     case Rq_vaps_tag:
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "vaps");
-        if (get_num_vaps(ctx))
-            return encode_submessage(ctx, ostream, field->tag, encode_vap_fields);
+        if ((num_vaps = get_num_vaps(ctx)) > 0)
+            return encode_vap_data(ctx, ostream, Rq_vaps_tag, num_vaps, get_vap_data);
         break;
     case Rq_cdma_cells_tag:
         if (get_num_cdma(ctx))
@@ -435,6 +428,9 @@ int32_t serialize_request(
         rq.umts_cells = rq.gnss = ctx;
 
     rq.timestamp = (int64_t)(*ctx->gettime)(NULL);
+
+    // Trim any excess vap from workspace
+    select_vap(ctx);
 
     memcpy(rq.device_id.bytes, get_ctx_device_id(ctx), get_ctx_id_length(ctx));
     rq.device_id.size = get_ctx_id_length(ctx);
@@ -609,6 +605,10 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
                 ctx->beacon[a].ap.property.used = 0;
         }
 
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "total_beacons: %d ap_beacons %d", rs.config.total_beacons,
+            rs.config.max_ap_beacons);
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "vap_per_ap: %d vap_per_rq %d", rs.config.max_vap_per_ap,
+            rs.config.max_vap_per_rq);
         if (apply_config_overrides(ctx->cache, &rs)) {
             if (ctx->logf && SKY_LOG_LEVEL_DEBUG <= ctx->min_level)
                 (*ctx->logf)(SKY_LOG_LEVEL_DEBUG, "New config overrides received from server");
@@ -700,9 +700,23 @@ static bool apply_config_overrides(Sky_cache_t *c, Rs *rs)
             CONFIG(c, cache_match_used_threshold) = rs->config.cache_match_used_threshold;
         }
     }
-    override = (rs->config.total_beacons != 0 || rs->config.max_ap_beacons != 0 ||
-                rs->config.cache_match_threshold != 0 || rs->config.cache_age_threshold != 0 ||
-                rs->config.cache_beacon_threshold != 0 || rs->config.cache_neg_rssi_threshold != 0);
+    if (rs->config.max_vap_per_ap != 0 && rs->config.max_vap_per_ap != CONFIG(c, max_vap_per_ap)) {
+        if (rs->config.max_vap_per_ap > 0 && rs->config.max_vap_per_ap <= 15) {
+            CONFIG(c, max_vap_per_ap) = rs->config.max_vap_per_ap;
+        } else {
+            CONFIG(c, max_vap_per_ap) = 0; // disable vap compression
+        }
+    }
+    if (rs->config.max_vap_per_rq != 0 && rs->config.max_vap_per_rq != CONFIG(c, max_vap_per_rq)) {
+        if (rs->config.max_vap_per_rq > 0 && rs->config.max_vap_per_rq <= 255) {
+            CONFIG(c, max_vap_per_rq) = rs->config.max_vap_per_rq;
+        }
+    }
+    override =
+        (rs->config.total_beacons != 0 || rs->config.max_ap_beacons != 0 ||
+            rs->config.cache_match_threshold != 0 || rs->config.cache_age_threshold != 0 ||
+            rs->config.cache_beacon_threshold != 0 || rs->config.cache_neg_rssi_threshold != 0 ||
+            rs->config.max_vap_per_ap != 0 || rs->config.max_vap_per_rq);
 
     /* Add new config parameters here */
 

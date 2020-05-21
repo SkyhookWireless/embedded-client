@@ -71,8 +71,8 @@ struct header {
  */
 typedef union {
     struct {
-        uint8_t nibble_idx : 4; /* 0-11 index into mac address by nibble */
         uint8_t value : 4; /* replacement value for the nibble indexed */
+        uint8_t nibble_idx : 4; /* 0-11 index into mac address by nibble */
     } data;
     uint8_t len; /* number of bytes in child patch data */
     uint8_t ap; /* index of parent AP */
@@ -89,7 +89,7 @@ struct ap {
     uint32_t freq;
     int16_t rssi;
     uint8_t vg_len;
-    Vap_t vg[MAX_VAP + 2]; /* Virtual APs */
+    Vap_t vg[MAX_VAP_PER_AP + 2]; /* Virtual APs */
 };
 
 // http://wiki.opencellid.org/wiki/API

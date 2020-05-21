@@ -37,7 +37,10 @@
 #define MAX_AP_BEACONS 10
 /*! \brief The maximum number of child APs in a Virtual Group
  */
-#define MAX_VAP 10
+#define MAX_VAP_PER_AP 6
+/*! \brief The maximum number of child APs total in a request
+ */
+#define MAX_VAP_PER_RQ 24
 
 /*! \brief The percentage of beacons that must match in a cached scan/location
  */
