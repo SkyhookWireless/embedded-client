@@ -273,6 +273,9 @@ int dump_hex16(const char *file, const char *function, Sky_ctx_t *ctx, Sky_log_l
 
 /*! \brief dump all bytes of the given buffer in hex
  *
+ *  @param file the file name where LOG_BUFFER was invoked
+ *  @param function the function name where LOG_BUFFER was invoked
+ *  @param ctx workspace pointer
  *  @param buf pointer to the buffer
  *  @param bufsize size of the buffer in bytes
  *
@@ -295,29 +298,37 @@ int log_buffer(const char *file, const char *function, Sky_ctx_t *ctx, Sky_log_l
     return buf_offset;
 }
 
-/*! \brief dump Virtual APs in group
+/*! \brief dump Virtual APs in group (children not parent)
  *
  *  @param ctx workspace pointer
- *  @param idx index of Virtual Group AP
+ *  @param b parent of Virtual Group AP
+ *  @param file the file name where LOG_BUFFER was invoked
+ *  @param function the function name where LOG_BUFFER was invoked
  *
  *  @returns void
  */
-void dump_vap(Sky_ctx_t *ctx, Beacon_t *b)
+void dump_vap(Sky_ctx_t *ctx, Beacon_t *b, const char *file, const char *func)
 {
 #if SKY_DEBUG
     int j, n, value;
     Vap_t *vap = b->ap.vg;
     uint8_t mac[MAC_SIZE];
     int idx_b;
+    char *prefix;
 
     /* Test whether beacon is in cache or workspace */
-    if (b >= ctx->beacon && b < ctx->beacon + MAX_AP_BEACONS + 1)
+    if (b >= ctx->beacon && b < ctx->beacon + MAX_AP_BEACONS + 1) {
         idx_b = b - ctx->beacon;
-    else if (b >= ctx->cache->cacheline[0].beacon && b < ctx->cache->cacheline[CACHE_SIZE].beacon) {
+        prefix = "worksp VAP:";
+    } else if (b >= ctx->cache->cacheline[0].beacon &&
+               b < ctx->cache->cacheline[CACHE_SIZE].beacon) {
         idx_b = b - ctx->cache->cacheline[0].beacon;
         idx_b %= MAX_AP_BEACONS;
-    } else
+        prefix = " cache VAP:";
+    } else {
         idx_b = 0;
+        prefix = "unknown VAP:";
+    }
     if (idx_b > MAX_AP_BEACONS || idx_b < 0) {
         LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Out of bounds!");
         return;
@@ -334,23 +345,25 @@ void dump_vap(Sky_ctx_t *ctx, Beacon_t *b)
         else
             mac[n / 2] = ((mac[n / 2] & 0x0F) | (value << 4));
 
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-            "VirtAP %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz VAP(%01X %01X)",
-            idx_b, b->ap.age, " ^^^^ ", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], b->ap.rssi,
-            b->ap.freq, n, value);
+        logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
+            "%s %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz VAP(%01X %01X)",
+            prefix, idx_b, b->ap.age, " ^^^^ ", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+            b->ap.rssi, b->ap.freq, n, value);
     }
 #endif
 }
 
-/*! \brief dump AP
+/*! \brief dump AP including any VAP
  *
  *  @param ctx workspace pointer
  *  @param str comment
  *  @param b pointer to Beacon_t structure
+ *  @param file the file name where LOG_BUFFER was invoked
+ *  @param function the function name where LOG_BUFFER was invoked
  *
  *  @returns void
  */
-void dump_ap(Sky_ctx_t *ctx, char *str, Beacon_t *b)
+void dump_ap(Sky_ctx_t *ctx, char *str, Beacon_t *b, const char *file, const char *func)
 {
 #if SKY_DEBUG
     int idx_b, cached = 0;
@@ -372,96 +385,89 @@ void dump_ap(Sky_ctx_t *ctx, char *str, Beacon_t *b)
         LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Out of bounds!");
         return;
     }
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
+    logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
         "%s %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz vap: %d",
         str, idx_b, b->ap.age,
         (cached || b->ap.property.in_cache) ? (b->ap.property.used ? "Used  " : "Unused") :
                                               "      ",
         b->ap.mac[0], b->ap.mac[1], b->ap.mac[2], b->ap.mac[3], b->ap.mac[4], b->ap.mac[5],
         b->ap.rssi, b->ap.freq, b->ap.vg_len);
-    dump_vap(ctx, b);
+    dump_vap(ctx, b, file, func);
 #endif
 }
 
-/*! \brief dump the beacons in the workspace
+/*! \brief dump the beacons in the workspace including any VAP
  *
  *  @param ctx workspace pointer
+ *  @param file the file name where LOG_BUFFER was invoked
+ *  @param function the function name where LOG_BUFFER was invoked
  *
  *  @returns 0 for success or negative number for error
  */
-void dump_workspace(Sky_ctx_t *ctx)
+void dump_workspace(Sky_ctx_t *ctx, const char *file, const char *func)
 {
 #if SKY_DEBUG
     int i;
 
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "WorkSpace: Got %d beacons, WiFi %d, connected %d", ctx->len,
-        ctx->ap_len, ctx->connected);
+    logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
+        "dump_workspace: Got %d beacons, WiFi %d, connected %d", ctx->len, ctx->ap_len,
+        ctx->connected);
     for (i = 0; i < ctx->len; i++) {
         switch (ctx->beacon[i].h.type) {
         case SKY_BEACON_AP:
-            /*
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                " Beacon %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz vap: %d",
-                i, ctx->beacon[i].ap.age,
-                ctx->beacon[i].ap.property.in_cache ?
-                    (ctx->beacon[i].ap.property.used ? "Used  " : "Unused") :
-                    "      ",
-                ctx->beacon[i].ap.mac[0], ctx->beacon[i].ap.mac[1], ctx->beacon[i].ap.mac[2],
-                ctx->beacon[i].ap.mac[3], ctx->beacon[i].ap.mac[4], ctx->beacon[i].ap.mac[5],
-                ctx->beacon[i].ap.rssi, ctx->beacon[i].ap.freq, ctx->beacon[i].ap.vg_len);
-            dump_vap(ctx, i);
-            */
-            dump_ap(ctx, " Beacon", &ctx->beacon[i]);
+            dump_ap(ctx, " workspace:", &ctx->beacon[i], file, func);
             break;
         case SKY_BEACON_CDMA:
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                " Beacon %-2d: CDMA Age: %d sid: %d, nid: %d, bsid: %d, rssi: %d", i,
+            logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
+                " workspace: %-2d: CDMA Age: %d sid: %d, nid: %d, bsid: %d, rssi: %d", i,
                 ctx->beacon[i].cdma.age, ctx->beacon[i].cdma.sid, ctx->beacon[i].cdma.nid,
                 ctx->beacon[i].cdma.bsid, ctx->beacon[i].cdma.rssi);
             break;
         case SKY_BEACON_GSM:
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                " Beacon %-2d: GSM Age: %d lac: %d, ui: %d, mcc: %d, mnc: %d, rssi: %d", i,
+            logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
+                " workspace: %-2d: GSM Age: %d lac: %d, ui: %d, mcc: %d, mnc: %d, rssi: %d", i,
                 ctx->beacon[i].gsm.age, ctx->beacon[i].gsm.lac, ctx->beacon[i].gsm.ci,
                 ctx->beacon[i].gsm.mcc, ctx->beacon[i].gsm.mnc, ctx->beacon[i].gsm.rssi);
             break;
         case SKY_BEACON_LTE:
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                " Beacon %-2d: LTE Age: %d e-cellid: %d, mcc: %d, mnc: %d, tac: %d, rssi: %d", i,
-                ctx->beacon[i].lte.age, ctx->beacon[i].lte.e_cellid, ctx->beacon[i].lte.mcc,
+            logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
+                " workspace: %-2d: LTE Age: %d e-cellid: %d, mcc: %d, mnc: %d, tac: %d, rssi: %d",
+                i, ctx->beacon[i].lte.age, ctx->beacon[i].lte.e_cellid, ctx->beacon[i].lte.mcc,
                 ctx->beacon[i].lte.mnc, ctx->beacon[i].lte.tac, ctx->beacon[i].lte.rssi);
             break;
         case SKY_BEACON_NBIOT:
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                " Beacon %-2d: NB-IoT Age: %d mcc: %d, mnc: %d, e_cellid: %d, tac: %d, rssi: %d", i,
-                ctx->beacon[i].nbiot.age, ctx->beacon[i].nbiot.mcc, ctx->beacon[i].nbiot.mnc,
+            logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
+                " workspace: %-2d: NB-IoT Age: %d mcc: %d, mnc: %d, e_cellid: %d, tac: %d, rssi: %d",
+                i, ctx->beacon[i].nbiot.age, ctx->beacon[i].nbiot.mcc, ctx->beacon[i].nbiot.mnc,
                 ctx->beacon[i].nbiot.e_cellid, ctx->beacon[i].nbiot.tac, ctx->beacon[i].nbiot.rssi);
             break;
         case SKY_BEACON_UMTS:
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                " Beacon %-2d: UMTS Age: %d lac: %d, ucid: %d, mcc: %d, mnc: %d, rssi: %d", i,
+            logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
+                " workspace: %-2d: UMTS Age: %d lac: %d, ucid: %d, mcc: %d, mnc: %d, rssi: %d", i,
                 ctx->beacon[i].umts.age, ctx->beacon[i].umts.lac, ctx->beacon[i].umts.ucid,
                 ctx->beacon[i].umts.mcc, ctx->beacon[i].umts.mnc, ctx->beacon[i].umts.rssi);
             break;
         case SKY_BEACON_BLE:
         case SKY_BEACON_MAX:
         default:
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Beacon %-2d: Type: Unknown", i);
+            logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG, "Beacon %-2d: Type: Unknown", i);
             break;
         }
     }
     if (CONFIG(ctx->cache, last_config_time) == 0) {
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-            "Config: Total Beacons:%d Max AP:%d Thresholds:%d(Match) %d(Age) %d(Beacons) %d(RSSI) Update:Pending",
+        logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
+            "Config: Beacons:%d AP:%d VAP:%d(%d) Thresholds:%d(Match) %d(Age) %d(Beacon) %d(RSSI) Update:Pending",
             CONFIG(ctx->cache, total_beacons), CONFIG(ctx->cache, max_ap_beacons),
+            CONFIG(ctx->cache, max_vap_per_ap), CONFIG(ctx->cache, max_vap_per_rq),
             CONFIG(ctx->cache, cache_match_threshold), CONFIG(ctx->cache, cache_age_threshold),
             CONFIG(ctx->cache, cache_beacon_threshold),
             CONFIG(ctx->cache, cache_neg_rssi_threshold),
             ctx->header.time - CONFIG(ctx->cache, last_config_time));
     } else {
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-            "Config: Total Beacons:%d Max AP Beacons:%d Thresholds:%d(Match) %d(Age) %d(Beacons) %d(RSSI) Update:%d Sec ago",
+        logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
+            "Config: Beacons:%d AP:%d VAP:%d(%d) Thresholds:%d(Match) %d(Age) %d(Beacon) %d(RSSI) Update:%d Sec",
             CONFIG(ctx->cache, total_beacons), CONFIG(ctx->cache, max_ap_beacons),
+            CONFIG(ctx->cache, max_vap_per_ap), CONFIG(ctx->cache, max_vap_per_rq),
             CONFIG(ctx->cache, cache_match_threshold), CONFIG(ctx->cache, cache_age_threshold),
             CONFIG(ctx->cache, cache_beacon_threshold),
             CONFIG(ctx->cache, cache_neg_rssi_threshold),
@@ -473,10 +479,12 @@ void dump_workspace(Sky_ctx_t *ctx)
 /*! \brief dump the beacons in the cache
  *
  *  @param ctx workspace pointer
+ *  @param file the file name where LOG_BUFFER was invoked
+ *  @param function the function name where LOG_BUFFER was invoked
  *
  *  @returns 0 for success or negative number for error
  */
-void dump_cache(Sky_ctx_t *ctx)
+void dump_cache(Sky_ctx_t *ctx, const char *file, const char *func)
 {
 #if SKY_DEBUG
     int i, j;
@@ -497,38 +505,39 @@ void dump_cache(Sky_ctx_t *ctx)
                 b = &c->beacon[j];
                 switch (b->h.type) {
                 case SKY_BEACON_AP:
-                    dump_ap(ctx, " Beacon", b);
+                    dump_ap(ctx, "     cache:", b, file, func);
                     break;
                 case SKY_BEACON_CDMA:
-                    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                        " Beacon %-2d:%-2d: Type: CDMA, sid: %d, nid: %d, bsid: %d, rssi: %d", i, j,
-                        b->cdma.sid, b->cdma.nid, b->cdma.bsid, b->cdma.rssi);
+                    logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
+                        "     cache: %-2d:%-2d: Type: CDMA, sid: %d, nid: %d, bsid: %d, rssi: %d",
+                        i, j, b->cdma.sid, b->cdma.nid, b->cdma.bsid, b->cdma.rssi);
                     break;
                 case SKY_BEACON_GSM:
-                    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                        " Beacon %-2d:%-2d: Type: GSM, lac: %d, ui: %d, mcc: %d, mnc: %d, rssi: %d",
+                    logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
+                        "     cache: %-2d:%-2d: Type: GSM, lac: %d, ui: %d, mcc: %d, mnc: %d, rssi: %d",
                         i, j, b->gsm.lac, b->gsm.ci, b->gsm.mcc, b->gsm.mnc, b->gsm.rssi);
                     break;
                 case SKY_BEACON_LTE:
-                    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                        " Beacon %-2d:%-2d: Age: %d Type: LTE, e-cellid: %d, mcc: %d, mnc: %d, tac: %d, rssi: %d",
+                    logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
+                        "     cache: %-2d:%-2d: Age: %d Type: LTE, e-cellid: %d, mcc: %d, mnc: %d, tac: %d, rssi: %d",
                         i, j, b->lte.age, b->lte.e_cellid, b->lte.mcc, b->lte.mnc, b->lte.tac,
                         b->lte.rssi);
                     break;
                 case SKY_BEACON_NBIOT:
-                    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                        " Beacon %-2d:%-2d: Type: NB-IoT, mcc: %d, mnc: %d, e_cellid: %d, tac: %d, rssi: %d",
+                    logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
+                        "     cache: %-2d:%-2d: Type: NB-IoT, mcc: %d, mnc: %d, e_cellid: %d, tac: %d, rssi: %d",
                         i, j, b->nbiot.mcc, b->nbiot.mnc, b->nbiot.e_cellid, b->nbiot.tac,
                         b->nbiot.rssi);
                     break;
                 case SKY_BEACON_UMTS:
-                    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                        " Beacon %-2d:%-2d: Type: UMTS, lac: %d, ucid: %d, mcc: %d, mnc: %d, rssi: %d",
+                    logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
+                        "     cache: %-2d:%-2d: Type: UMTS, lac: %d, ucid: %d, mcc: %d, mnc: %d, rssi: %d",
                         i, j, b->umts.lac, b->umts.ucid, b->umts.mcc, b->umts.mnc, b->umts.rssi);
                     break;
                 case SKY_BEACON_BLE:
                 case SKY_BEACON_MAX:
-                    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, " Beacon %-2d:%-2d: Type: Unknown!!!", i, j);
+                    LOGFMT(
+                        ctx, SKY_LOG_LEVEL_DEBUG, "     cache: %-2d:%-2d: Type: Unknown!!!", i, j);
                     break;
                 }
             }
@@ -557,6 +566,10 @@ void config_defaults(Sky_cache_t *c)
         CONFIG(c, cache_beacon_threshold) = CACHE_BEACON_THRESHOLD;
     if (CONFIG(c, cache_neg_rssi_threshold) == 0)
         CONFIG(c, cache_neg_rssi_threshold) = CACHE_RSSI_THRESHOLD;
+    if (CONFIG(c, max_vap_per_ap) == 0)
+        CONFIG(c, max_vap_per_ap) = MAX_VAP_PER_AP;
+    if (CONFIG(c, max_vap_per_rq) == 0)
+        CONFIG(c, max_vap_per_rq) = MAX_VAP_PER_RQ;
     /* Add new config parameters here */
 }
 
@@ -1557,32 +1570,35 @@ int64_t get_gnss_age(Sky_ctx_t *ctx, uint32_t idx)
  *
  *  @param ctx workspace buffer
  *
- *  @return number of bytes of compressed Virtual APs
+ *  @return number of bytes of compressed Virtual AP groups
  */
 int32_t get_num_vaps(Sky_ctx_t *ctx)
 {
     int j, nv = 0;
+#if SKY_DEBUG
+    int total_vap = 0;
+#endif
     Beacon_t *w;
 
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "ap");
     if (ctx == NULL) {
         // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
     for (j = 0; j < NUM_APS(ctx); j++) {
         w = &ctx->beacon[j];
-        /* Complete the virtual group patch bytes with index of parent */
-        w->ap.vg[VAP_PARENT].ap = j;
         nv += (w->ap.vg_len ? 1 : 0);
-        if (w->ap.vg_len)
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "ap: %d total: %d vap: %d len: %d",
-                w->ap.vg[VAP_PARENT].ap, nv, w->ap.vg_len, w->ap.vg[VAP_LENGTH].len);
+#if SKY_DEBUG
+        total_vap += w->ap.vg_len;
+#endif
     }
 
+    // LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Groups: %d, vaps: %d", nv, total_vap);
     return nv;
 }
 
 /*! \brief field extraction for dynamic use of Nanopb (vap_data)
+ *
+ *  this routine also patches the index of the parent AP
  *
  *  @param ctx workspace buffer
  *  @param idx index into Virtual Groups
@@ -1591,26 +1607,79 @@ int32_t get_num_vaps(Sky_ctx_t *ctx)
  */
 uint8_t *get_vap_data(Sky_ctx_t *ctx, uint32_t idx)
 {
-    int j, nv = 0;
+    int j, nvg = 0;
     Beacon_t *w;
 
     if (ctx == NULL) {
         // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
         return 0;
     }
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "idx: %d", idx);
     /* Walk through APs counting vap, when the idx is the current Virtual Group */
     /* return the Virtual AP data */
     for (j = 0; j < NUM_APS(ctx); j++) {
         w = &ctx->beacon[j];
-        if ((w->ap.vg_len ? 1 : 0) && nv == idx) {
+        if ((w->ap.vg_len ? 1 : 0) && nvg == idx) {
+#if 0
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "AP: %d idx: %d len: %d ap: %d", j, idx,
                 w->ap.vg[VAP_LENGTH].len, w->ap.vg[VAP_PARENT].ap);
             dump_hex16(__FILE__, __FUNCTION__, ctx, SKY_LOG_LEVEL_DEBUG, w->ap.vg + 1,
                 w->ap.vg[VAP_LENGTH].len, 0);
+#endif
             return (uint8_t *)w->ap.vg;
-        } else
-            nv += (w->ap.vg_len ? 1 : 0);
+        } else {
+            nvg += (w->ap.vg_len ? 1 : 0);
+        }
+    }
+    return 0;
+}
+
+/*! \brief trim VAP children to meet max_vap_per_rq config
+ *
+ *  this routine alters the vap patch data, reducing where necessary
+ *  the number of children in a virtual group so that as many groups
+ *  as possible are retained, but the max_vap_per_rq is not exceeded
+ *
+ *  @param ctx workspace buffer
+ *
+ *  @return vaps data i.e len, AP, patch1, patch2...
+ */
+uint8_t *select_vap(Sky_ctx_t *ctx)
+{
+    int j, nvap = 0, no_more = false;
+    Beacon_t *w;
+    uint8_t cap_vap[MAX_AP_BEACONS] = {
+        0
+    }; /* fill request with as many virtual groups as possible */
+
+    if (ctx == NULL) {
+        // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param");
+        return 0;
+    }
+    for (; !no_more && nvap < CONFIG(ctx->cache, max_vap_per_rq);) {
+        /* Walk through APs counting vap, when the idx is the current Virtual Group */
+        /* return the Virtual AP data */
+        no_more = true;
+        for (j = 0; j < NUM_APS(ctx); j++) {
+            w = &ctx->beacon[j];
+            if (w->ap.vg_len > cap_vap[j]) {
+                cap_vap[j]++;
+                nvap++;
+#if 1
+                LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "AP: %d len: %d nvap: %d", j, cap_vap[j], nvap);
+#endif
+                if (nvap == CONFIG(ctx->cache, max_vap_per_rq))
+                    break;
+                if (w->ap.vg_len > cap_vap[j])
+                    no_more = false;
+            }
+        }
+    }
+    /* Complete the virtual group patch bytes with index of parent */
+    for (j = 0; j < NUM_APS(ctx); j++) {
+        w = &ctx->beacon[j];
+        w->ap.vg[VAP_PARENT].ap = j;
+        w->ap.vg[VAP_LENGTH].ap = cap_vap[j] + VAP_PARENT;
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "AP: %d len: %d", j, cap_vap[j]);
     }
     return 0;
 }

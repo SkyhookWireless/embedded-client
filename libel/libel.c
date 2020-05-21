@@ -265,7 +265,6 @@ Sky_ctx_t *sky_new_request(void *workspace_buf, uint32_t bufsize, Sky_errno_t *s
     }
     ctx->bestput = -1; /* unknown */
     ctx->connected = -1; /* all unconnected */
-    ctx->ap_vg_len = MAX_VAP / MAX_AP_BEACONS;
     if (ctx->cache->len) {
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "%d cachelines present", ctx->cache->len);
         for (i = 0; i < CACHE_SIZE; i++) {
@@ -283,9 +282,9 @@ Sky_ctx_t *sky_new_request(void *workspace_buf, uint32_t bufsize, Sky_errno_t *s
                     CACHE_SIZE, now - ctx->cache->cacheline[i].time);
             }
         }
-        dump_cache(ctx);
+        DUMP_CACHE(ctx);
     }
-    dump_workspace(ctx);
+    DUMP_WORKSPACE(ctx);
     return ctx;
 }
 
@@ -735,6 +734,7 @@ Sky_status_t sky_sizeof_request_buf(Sky_ctx_t *ctx, uint32_t *size, Sky_errno_t 
 
     if (size == NULL)
         return sky_return(sky_errno, SKY_ERROR_BAD_PARAMETERS);
+    DUMP_WORKSPACE(ctx);
 
     /* encode request into the bit bucket, just to determine the length of the
      * encoded message */

@@ -371,7 +371,7 @@ int main(int ac, char **av)
     case SKY_FINALIZE_REQUEST:
         break;
     }
-    dump_workspace(ctx);
+    DUMP_WORKSPACE(ctx)
 
     for (t = SKY_BEACON_AP; t != SKY_BEACON_MAX; t++) {
         printf("get_num_beacons: %d, %d\n", t, i = get_num_beacons(ctx, t));
@@ -439,7 +439,7 @@ int main(int ac, char **av)
 #else
     add_to_cache(ctx, &loc);
 #endif
-    dump_cache(ctx);
+    DUMP_CACHE(ctx);
     /* simulate new config from server */
     ctx->cache->config.total_beacons = 8;
     ctx->cache->config.max_ap_beacons = 6;

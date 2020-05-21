@@ -54,6 +54,8 @@ typedef struct sky_config_pad {
     uint32_t cache_neg_rssi_threshold;
     uint32_t cache_match_all_threshold;
     uint32_t cache_match_used_threshold;
+    uint32_t max_vap_per_ap;
+    uint32_t max_vap_per_rq;
     /* add more configuration params here */
 } Sky_config_t;
 
@@ -83,7 +85,6 @@ typedef struct sky_ctx {
     Gps_t gps; /* GNSS info */
     /* Assume worst case is that beacons and gps info takes twice the bare structure size */
     int16_t bestput; /* cacheline with best match for saving */
-    int16_t ap_vg_len; /* max Virtual APs in a group (0 == none) */
     Sky_cache_t *cache;
 } Sky_ctx_t;
 #endif

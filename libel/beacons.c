@@ -30,13 +30,11 @@
 #define SKY_LIBEL 1
 #include "libel.h"
 
-#define VERBOSE_DEBUG 1
+/* #define VERBOSE_DEBUG 1 */
 
 #define MIN(x, y) ((x) > (y) ? (y) : (x))
 #define NOMINAL_RSSI(b) ((b) == -1 ? (-90) : (b))
 
-void dump_workspace(Sky_ctx_t *ctx);
-void dump_cache(Sky_ctx_t *ctx);
 static bool beacon_in_cache(Sky_ctx_t *ctx, Beacon_t *b, Sky_cacheline_t *cl, int *index);
 
 /*! \brief test two MAC addresses for being members of same virtual Group
@@ -99,8 +97,8 @@ static int ap_similar(Sky_ctx_t *ctx, Beacon_t *apA, Beacon_t *apB, int *pn)
 
     if ((b = mac_similar(ctx, apA->ap.mac, apB->ap.mac, &n)) == 0) {
 #if VERBOSE_DEBUG
-        dump_ap(ctx, "Differ A ", apA);
-        dump_ap(ctx, "       B ", apB);
+        dump_ap(ctx, "  Differ A ", apA, __FILE__, __FUNCTION__);
+        dump_ap(ctx, "         B ", apB, __FILE__, __FUNCTION__);
 #endif
         return 0;
     }
@@ -109,24 +107,24 @@ static int ap_similar(Sky_ctx_t *ctx, Beacon_t *apA, Beacon_t *apB, int *pn)
     for (v = 0; v < apA->ap.vg_len; v++)
         if (apA->ap.vg[v + VAP_FIRST_DATA].data.nibble_idx != n) {
 #if VERBOSE_DEBUG
-            dump_ap(ctx, "Mismatch A*", apA);
-            dump_ap(ctx, "         B ", apB);
+            dump_ap(ctx, "Mismatch A*", apA, __FILE__, __FUNCTION__);
+            dump_ap(ctx, "         B ", apB, __FILE__, __FUNCTION__);
 #endif
             return 0;
         }
     for (v = 0; v < apB->ap.vg_len; v++)
         if (apB->ap.vg[v + VAP_FIRST_DATA].data.nibble_idx != n) {
 #if VERBOSE_DEBUG
-            dump_ap(ctx, "Mismatch A ", apA);
-            dump_ap(ctx, "         B*", apB);
+            dump_ap(ctx, "Mismatch A ", apA, __FILE__, __FUNCTION__);
+            dump_ap(ctx, "         B*", apB, __FILE__, __FUNCTION__);
 #endif
             return 0;
         }
     if (pn)
         *pn = n;
 #if VERBOSE_DEBUG
-    dump_ap(ctx, "Match A ", apA);
-    dump_ap(ctx, "      B ", apB);
+    dump_ap(ctx, "   Match A ", apA, __FILE__, __FUNCTION__);
+    dump_ap(ctx, "         B ", apB, __FILE__, __FUNCTION__);
 #endif
     return b;
 }
@@ -172,8 +170,8 @@ static bool add_child_to_VirtualGroup(Sky_ctx_t *ctx, int vg, int ap, int n)
     parent = &ctx->beacon[vg];
     child = &ctx->beacon[ap];
 #if SKY_DEBUG
-    dump_ap(ctx, " Parent", parent);
-    dump_ap(ctx, " Child ", child);
+    dump_ap(ctx, " Parent", parent, __FILE__, __FUNCTION__);
+    dump_ap(ctx, " Child ", child, __FILE__, __FUNCTION__);
 #endif
 
     if (vg >= NUM_APS(ctx) || ap >= NUM_APS(ctx))
@@ -199,7 +197,7 @@ static bool add_child_to_VirtualGroup(Sky_ctx_t *ctx, int vg, int ap, int n)
             pvg[vg_p + VAP_FIRST_DATA].data.value == patch.data.value)
             dup = 1;
     }
-    if (!dup && vg_p == MAX_VAP) /* No room for one more */
+    if (!dup && vg_p == CONFIG(ctx->cache, max_vap_per_ap)) /* No room for one more */
         return false;
 
         /* update parent rssi with proportion of child rssi */
@@ -237,18 +235,18 @@ static bool add_child_to_VirtualGroup(Sky_ctx_t *ctx, int vg, int ap, int n)
                     child->ap.vg[vg_c + VAP_FIRST_DATA].data.nibble_idx &&
                 pvg[vg_p + VAP_FIRST_DATA].data.value ==
                     child->ap.vg[vg_c + VAP_FIRST_DATA].data.value) {
-                dump_ap(ctx, " Child dup", child);
+                dump_ap(ctx, " Child dup", child, __FILE__, __FUNCTION__);
                 break;
             }
         }
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "   child: %d to parent: %d", vg_c, vg_p);
         /* copy child to parent if not already a member */
         if (vg_p == parent->ap.vg_len) {
-            if (vg_p == MAX_VAP) {
+            if (vg_p == CONFIG(ctx->cache, max_vap_per_ap)) {
                 LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "No room to keep all Virtual APs");
                 return false;
             }
-            dump_ap(ctx, " Child add", child);
+            dump_ap(ctx, " Child add", child, __FILE__, __FUNCTION__);
             pvg[vg_p + VAP_FIRST_DATA].data = child->ap.vg[vg_c + VAP_FIRST_DATA].data;
             pvg[VAP_LENGTH].len = vg_p + VAP_FIRST_DATA;
             parent->ap.vg_len = vg_p + 1;
@@ -476,7 +474,7 @@ static Sky_status_t compress_virtual_ap(Sky_ctx_t *ctx)
     LOGFMT(
         ctx, SKY_LOG_LEVEL_DEBUG, "ap_len: %d APs of %d beacons", (int)ctx->ap_len, (int)ctx->len);
 
-    dump_workspace(ctx);
+    DUMP_WORKSPACE(ctx);
 
     if (ctx->ap_len <= CONFIG(ctx->cache, max_ap_beacons)) {
         return SKY_ERROR;
@@ -490,7 +488,7 @@ static Sky_status_t compress_virtual_ap(Sky_ctx_t *ctx)
 
     for (j = 0; j < ctx->ap_len - 1; j++) {
 #if VERBOSE_DEBUG
-        dump_ap(ctx, "cmp", &ctx->beacon[j]);
+        dump_ap(ctx, "cmp", &ctx->beacon[j], __FILE__, __FUNCTION__);
 #endif
         for (i = j + 1; i < ctx->ap_len; i++) {
             if ((cmp = ap_similar(ctx, &ctx->beacon[i], &ctx->beacon[j], &n)) < 0) {
@@ -510,7 +508,7 @@ static Sky_status_t compress_virtual_ap(Sky_ctx_t *ctx)
                     LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "Didn't save Virtual AP");
                 }
                 remove_beacon(ctx, rm);
-                dump_workspace(ctx);
+                // DUMP_WORKSPACE(ctx);
                 return SKY_SUCCESS;
             }
         }
@@ -597,8 +595,8 @@ Sky_status_t add_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon_t *b, boo
         c = &ctx->cache->cacheline[ctx->cache->newest].beacon[j];
         if (w->ap.property.in_cache) {
             w->ap.property.used = c->ap.property.used;
-            dump_ap(ctx, "Cached Beacon", c);
-            dump_ap(ctx, "Worksp Beacon", w);
+            dump_ap(ctx, "() Worksp", w, __FILE__, __FUNCTION__);
+            dump_ap(ctx, "() Cache ", c, __FILE__, __FUNCTION__);
         } else
             w->ap.property.used = false;
 
@@ -813,8 +811,8 @@ int find_best_match(Sky_ctx_t *ctx)
     int bestthresh = 0;
     Sky_cacheline_t *cl;
 
-    dump_cache(ctx);
-    dump_workspace(ctx);
+    DUMP_WORKSPACE(ctx);
+    DUMP_CACHE(ctx);
 
     /* expire old cachelines and note first empty cacheline as best line to save to */
     for (i = 0, err = false; i < CACHE_SIZE; i++) {

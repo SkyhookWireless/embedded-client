@@ -26,6 +26,8 @@
 #define SKY_UTILITIES_H
 
 #if SKY_DEBUG
+#define DUMP_WORKSPACE(...) dump_workspace(__VA_ARGS__, __FILE__, __FUNCTION__)
+#define DUMP_CACHE(...) dump_cache(__VA_ARGS__, __FILE__, __FUNCTION__)
 #define LOGFMT(...) logfmt(__FILE__, __FUNCTION__, __VA_ARGS__)
 #define LOG_BUFFER(c, l, b, s) log_buffer(__FILE__, __FUNCTION__, c, l, b, s);
 #else
@@ -49,10 +51,10 @@ int logfmt(
 int log_buffer(const char *file, const char *function, Sky_ctx_t *ctx, Sky_log_level_t level,
     void *buffer, uint32_t bufsize);
 #endif
-void dump_vap(Sky_ctx_t *ctx, Beacon_t *b);
-void dump_ap(Sky_ctx_t *ctx, char *str, Beacon_t *b);
-void dump_workspace(Sky_ctx_t *ctx);
-void dump_cache(Sky_ctx_t *ctx);
+void dump_vap(Sky_ctx_t *ctx, Beacon_t *b, const char *file, const char *func);
+void dump_ap(Sky_ctx_t *ctx, char *str, Beacon_t *b, const char *file, const char *func);
+void dump_workspace(Sky_ctx_t *ctx, const char *file, const char *func);
+void dump_cache(Sky_ctx_t *ctx, const char *file, const char *func);
 void config_defaults(Sky_cache_t *c);
 int32_t get_num_beacons(Sky_ctx_t *ctx, Sky_beacon_type_t t);
 int get_base_beacons(Sky_ctx_t *ctx, Sky_beacon_type_t t);
@@ -126,6 +128,7 @@ int64_t get_gnss_nsat(Sky_ctx_t *ctx, uint32_t idx);
 int64_t get_gnss_age(Sky_ctx_t *ctx, uint32_t idx);
 
 int32_t get_num_vaps(Sky_ctx_t *ctx);
+uint8_t *select_vap(Sky_ctx_t *ctx);
 uint8_t *get_vap_data(Sky_ctx_t *ctx, uint32_t idx);
 
 int sky_rand_fn(uint8_t *rand_buf, uint32_t bufsize);
