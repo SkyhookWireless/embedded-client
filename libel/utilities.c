@@ -98,7 +98,7 @@ int validate_cache(Sky_cache_t *c, Sky_loggerfn_t logf)
     if (c == NULL) {
 #if SKY_DEBUG
         if (logf != NULL)
-            (*logf)(SKY_LOG_LEVEL_DEBUG, "Cache validation: NUL pointer");
+            (*logf)(SKY_LOG_LEVEL_WARNING, "Cache validation failed: NUL pointer");
 #endif
         return false;
     }
@@ -106,14 +106,14 @@ int validate_cache(Sky_cache_t *c, Sky_loggerfn_t logf)
     if (c->len != CACHE_SIZE) {
 #if SKY_DEBUG
         if (logf != NULL)
-            (*logf)(SKY_LOG_LEVEL_DEBUG, "Cache validation failed: too big for CACHE_SIZE");
-        return false;
+            (*logf)(SKY_LOG_LEVEL_ERROR, "Cache validation failed: too big for CACHE_SIZE");
 #endif
+        return false;
     }
     if (c->newest >= CACHE_SIZE) {
 #if SKY_DEBUG
         if (logf != NULL)
-            (*logf)(SKY_LOG_LEVEL_DEBUG, "Cache validation failed: newest too big for CACHE_SIZE");
+            (*logf)(SKY_LOG_LEVEL_ERROR, "Cache validation failed: newest too big for CACHE_SIZE");
 #endif
         return false;
     }
@@ -121,7 +121,7 @@ int validate_cache(Sky_cache_t *c, Sky_loggerfn_t logf)
     if (c->header.magic != SKY_MAGIC) {
 #if SKY_DEBUG
         if (logf != NULL)
-            (*logf)(SKY_LOG_LEVEL_DEBUG, "Cache validation failed: bad magic in header");
+            (*logf)(SKY_LOG_LEVEL_ERROR, "Cache validation failed: bad magic in header");
 #endif
         return false;
     }
@@ -131,7 +131,7 @@ int validate_cache(Sky_cache_t *c, Sky_loggerfn_t logf)
             if (c->cacheline[i].len > TOTAL_BEACONS) {
 #if SKY_DEBUG
                 if (logf != NULL)
-                    (*logf)(SKY_LOG_LEVEL_DEBUG,
+                    (*logf)(SKY_LOG_LEVEL_ERROR,
                         "Cache validation failed: too many beacons for TOTAL_BEACONS");
 #endif
                 return false;
@@ -141,14 +141,14 @@ int validate_cache(Sky_cache_t *c, Sky_loggerfn_t logf)
                 if (c->cacheline[i].beacon[j].h.magic != BEACON_MAGIC) {
 #if SKY_DEBUG
                     if (logf != NULL)
-                        (*logf)(SKY_LOG_LEVEL_DEBUG, "Cache validation failed: Bad beacon info");
+                        (*logf)(SKY_LOG_LEVEL_ERROR, "Cache validation failed: Bad beacon info");
 #endif
                     return false;
                 }
                 if (c->cacheline[i].beacon[j].h.type > SKY_BEACON_MAX) {
 #if SKY_DEBUG
                     if (logf != NULL)
-                        (*logf)(SKY_LOG_LEVEL_DEBUG, "Cache validation failed: Bad beacon type");
+                        (*logf)(SKY_LOG_LEVEL_ERROR, "Cache validation failed: Bad beacon type");
 #endif
                     return false;
                 }
@@ -157,7 +157,7 @@ int validate_cache(Sky_cache_t *c, Sky_loggerfn_t logf)
     } else {
 #if SKY_DEBUG
         if (logf != NULL)
-            (*logf)(SKY_LOG_LEVEL_DEBUG, "Cache validation failed: crc mismatch!");
+            (*logf)(SKY_LOG_LEVEL_ERROR, "Cache validation failed: crc mismatch!");
 #endif
         return false;
     }
@@ -1575,9 +1575,7 @@ int64_t get_gnss_age(Sky_ctx_t *ctx, uint32_t idx)
 int32_t get_num_vaps(Sky_ctx_t *ctx)
 {
     int j, nv = 0;
-#if SKY_DEBUG
-    int total_vap = 0;
-#endif
+    // int total_vap = 0;
     Beacon_t *w;
 
     if (ctx == NULL) {
@@ -1587,9 +1585,7 @@ int32_t get_num_vaps(Sky_ctx_t *ctx)
     for (j = 0; j < NUM_APS(ctx); j++) {
         w = &ctx->beacon[j];
         nv += (w->ap.vg_len ? 1 : 0);
-#if SKY_DEBUG
-        total_vap += w->ap.vg_len;
-#endif
+        // total_vap += w->ap.vg_len;
     }
 
     // LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Groups: %d, vaps: %d", nv, total_vap);
@@ -1664,9 +1660,6 @@ uint8_t *select_vap(Sky_ctx_t *ctx)
             if (w->ap.vg_len > cap_vap[j]) {
                 cap_vap[j]++;
                 nvap++;
-#if 1
-                LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "AP: %d len: %d nvap: %d", j, cap_vap[j], nvap);
-#endif
                 if (nvap == CONFIG(ctx->cache, max_vap_per_rq))
                     break;
                 if (w->ap.vg_len > cap_vap[j])
@@ -1680,6 +1673,8 @@ uint8_t *select_vap(Sky_ctx_t *ctx)
         w->ap.vg[VAP_PARENT].ap = j;
         w->ap.vg[VAP_LENGTH].ap = cap_vap[j] + VAP_PARENT;
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "AP: %d len: %d", j, cap_vap[j]);
+        dump_hex16(__FILE__, __FUNCTION__, ctx, SKY_LOG_LEVEL_DEBUG, w->ap.vg + 1,
+            w->ap.vg[VAP_LENGTH].ap, 0);
     }
     return 0;
 }

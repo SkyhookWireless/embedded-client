@@ -686,8 +686,12 @@ Sky_finalize_t sky_finalize_request(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, void
         return SKY_FINALIZE_ERROR;
     }
 
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Processing request with %d beacons into %d byte buffer",
-        ctx->len, bufsize);
+    // Trim any excess vap from workspace
+    select_vap(ctx);
+
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
+        "Processing request with %d beacons and %d virtual group APs into %d byte buffer", ctx->len,
+        get_num_vaps(ctx), bufsize);
 
 #if SKY_DEBUG
     if (ctx->cache->config.last_config_time == 0)
