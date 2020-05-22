@@ -180,8 +180,6 @@ static bool add_child_to_VirtualGroup(Sky_ctx_t *ctx, int vg, int ap, int n)
     if ((replace = nibble(child->ap.mac, n)) == 0xff)
         return false;
 
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, " nib: %d value: 0x%02X", n, replace);
-
     pvg = parent->ap.vg;
     patch.data.nibble_idx = n;
     patch.data.value = replace;
@@ -229,24 +227,20 @@ static bool add_child_to_VirtualGroup(Sky_ctx_t *ctx, int vg, int ap, int n)
     /* Add any Virtual APs from child */
     for (vg_c = 0; vg_c < child->ap.vg_len; vg_c++) {
         for (vg_p = 0; vg_p < parent->ap.vg_len; vg_p++) {
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, " add child: %d to parent: %d", vg_c, vg_p);
             /* Ignore any duplicates */
             if (pvg[vg_p + VAP_FIRST_DATA].data.nibble_idx ==
                     child->ap.vg[vg_c + VAP_FIRST_DATA].data.nibble_idx &&
                 pvg[vg_p + VAP_FIRST_DATA].data.value ==
                     child->ap.vg[vg_c + VAP_FIRST_DATA].data.value) {
-                dump_ap(ctx, " Child dup", child, __FILE__, __FUNCTION__);
                 break;
             }
         }
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "   child: %d to parent: %d", vg_c, vg_p);
         /* copy child to parent if not already a member */
         if (vg_p == parent->ap.vg_len) {
             if (vg_p == CONFIG(ctx->cache, max_vap_per_ap)) {
                 LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "No room to keep all Virtual APs");
                 return false;
             }
-            dump_ap(ctx, " Child add", child, __FILE__, __FUNCTION__);
             pvg[vg_p + VAP_FIRST_DATA].data = child->ap.vg[vg_c + VAP_FIRST_DATA].data;
             pvg[VAP_LENGTH].len = vg_p + VAP_FIRST_DATA;
             parent->ap.vg_len = vg_p + 1;
@@ -471,9 +465,6 @@ static Sky_status_t compress_virtual_ap(Sky_ctx_t *ctx)
     bool cached = false;
 #endif
 
-    LOGFMT(
-        ctx, SKY_LOG_LEVEL_DEBUG, "ap_len: %d APs of %d beacons", (int)ctx->ap_len, (int)ctx->len);
-
     DUMP_WORKSPACE(ctx);
 
     if (ctx->ap_len <= CONFIG(ctx->cache, max_ap_beacons)) {
@@ -508,7 +499,6 @@ static Sky_status_t compress_virtual_ap(Sky_ctx_t *ctx)
                     LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "Didn't save Virtual AP");
                 }
                 remove_beacon(ctx, rm);
-                // DUMP_WORKSPACE(ctx);
                 return SKY_SUCCESS;
             }
         }
@@ -525,7 +515,7 @@ static Sky_status_t compress_virtual_ap(Sky_ctx_t *ctx)
  *   if beacon is AP,
  *    . reject a duplicate
  *    . for duplicates, keep newest and strongest
- *     
+ *
  *   Insert new beacon in workspace
  *    . Add APs in order based on lowest to highest rssi value
  *    . Add cells after APs
@@ -571,10 +561,10 @@ Sky_status_t add_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon_t *b, boo
             if (b->ap.age > ctx->beacon[dup].ap.age ||
                 (b->ap.age == ctx->beacon[dup].ap.age &&
                     NOMINAL_RSSI(b->ap.rssi) <= NOMINAL_RSSI(ctx->beacon[dup].ap.rssi))) {
-                LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Reject duplicate beacon");
+                LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "Reject duplicate beacon");
                 return sky_return(sky_errno, SKY_ERROR_NONE);
             }
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Keep new duplicate beacon %s",
+            LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "Keep new duplicate beacon %s",
                 (b->ap.age == ctx->beacon[dup].ap.age) ? "(stronger signal)" : "(younger)");
             remove_beacon(ctx, dup);
         }
@@ -915,7 +905,7 @@ int find_best_match(Sky_ctx_t *ctx)
     }
 
     /* make a note of the best match used by add_to_cache */
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Best cacheline for put to cache: %d of 0..%d score %d",
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Best cacheline for save to cache: %d of 0..%d score %d",
         bestput, CACHE_SIZE - 1, (int)round(bestputratio * 100));
     ctx->bestput = bestput;
 

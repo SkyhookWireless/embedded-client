@@ -33,8 +33,6 @@
 #include "proto.h"
 #include "aes.h"
 
-int dump_hex16(const char *file, const char *function, Sky_ctx_t *ctx, Sky_log_level_t level,
-    void *buffer, uint32_t bufsize, int buf_offset);
 static bool apply_config_overrides(Sky_cache_t *c, Rs *rs);
 static int64_t get_gnss_lat_scaled(Sky_ctx_t *ctx, uint32_t idx);
 static int64_t get_gnss_lon_scaled(Sky_ctx_t *ctx, uint32_t idx);
@@ -128,7 +126,7 @@ static bool encode_vap_data(
             return false;
     }
 
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "length %d", substream.bytes_written);
+    // LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "length %d", substream.bytes_written);
     if (!pb_encode_varint(ostream, substream.bytes_written))
         return false;
 
@@ -136,8 +134,6 @@ static bool encode_vap_data(
     for (i = 0; i < num_elems; i++) {
         uint8_t *data = getter(ctx, i);
 
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "string length %d", *data);
-        dump_hex16(__FILE__, __FUNCTION__, ctx, SKY_LOG_LEVEL_DEBUG, data + 1, *data, 0);
         /* *data == len, data + 1 == first byte of data */
         if (!pb_encode_string(ostream, data + 1, *data))
             return false;
@@ -187,7 +183,6 @@ static bool encode_optimized_repeated_field(Sky_ctx_t *ctx, pb_ostream_t *ostrea
 static bool encode_ap_fields(Sky_ctx_t *ctx, pb_ostream_t *ostream)
 {
     uint32_t num_beacons = get_num_aps(ctx);
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "num ap %d", num_beacons);
 
     return encode_connected_field(
                ctx, ostream, num_beacons, Aps_connected_idx_plus_1_tag, get_ap_is_connected) &&
@@ -343,22 +338,18 @@ static bool encode_submessage(
 bool Rq_callback(pb_istream_t *istream, pb_ostream_t *ostream, const pb_field_t *field)
 {
     Sky_ctx_t *ctx = *(Sky_ctx_t **)field->pData;
-    int num_vaps;
 
     // Per the documentation here:
     // https://jpa.kapsi.fi/nanopb/docs/reference.html#pb-encode-delimited
     //
     switch (field->tag) {
     case Rq_aps_tag:
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "aps");
         if (get_num_aps(ctx))
             return encode_submessage(ctx, ostream, field->tag, encode_ap_fields);
         break;
     case Rq_vaps_tag:
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "vaps");
-        if ((num_vaps = get_num_vaps(ctx)) > 0)
-            return encode_vap_data(ctx, ostream, Rq_vaps_tag, num_vaps, get_vap_data);
-        break;
+        return encode_vap_data(ctx, ostream, Rq_vaps_tag, get_num_vaps(ctx), get_vap_data);
+
     case Rq_cdma_cells_tag:
         if (get_num_cdma(ctx))
             return encode_submessage(ctx, ostream, field->tag, encode_cdma_fields);
@@ -429,9 +420,6 @@ int32_t serialize_request(
 
     rq.timestamp = (int64_t)(*ctx->gettime)(NULL);
 
-    // Trim any excess vap from workspace
-    select_vap(ctx);
-
     memcpy(rq.device_id.bytes, get_ctx_device_id(ctx), get_ctx_id_length(ctx));
     rq.device_id.size = get_ctx_id_length(ctx);
 
@@ -500,7 +488,9 @@ int32_t serialize_request(
     else
         return -1;
 
-    log_buffer(__FILE__, __FUNCTION__, ctx, SKY_LOG_LEVEL_DEBUG, buf, rq_size);
+#if SKY_DEBUG
+    log_buffer(__FILE__, __FUNCTION__, ctx, SKY_LOG_LEVEL_DEBUG, buf, bytes_written);
+#endif
 
     // Encrypt the (serialized) request body.
     //
@@ -539,21 +529,21 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
     // header.
     //
     if (buf_len < 1) {
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: buf_len < 1");
+        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "buf_len < 1");
         return -1;
     }
 
     buf += 1;
 
     if (buf_len < 1 + hdr_size) {
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: buf_len < 1 + hdr_size");
+        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "buf_len < 1 + hdr_size");
         return -1;
     }
 
     istream = pb_istream_from_buffer(buf, hdr_size);
 
     if (!pb_decode(&istream, RsHeader_fields, &header)) {
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: pb_decode for header");
+        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "pb_decode for header");
         return -1;
     }
 
@@ -565,14 +555,14 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
 
         // Deserialize the crypto_info.
         if (buf_len < 1 + hdr_size + header.crypto_info_length + header.rs_length) {
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: buf_len <...");
+            LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "buf_len <...");
             return -1;
         }
 
         istream = pb_istream_from_buffer(buf, header.crypto_info_length);
 
         if (!pb_decode(&istream, CryptoInfo_fields, &crypto_info)) {
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: pb_decode for crypto");
+            LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "pb_decode for crypto");
             return -1;
         }
 
@@ -587,7 +577,7 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
         istream = pb_istream_from_buffer(buf, header.rs_length - crypto_info.aes_padding_length);
 
         if (!pb_decode(&istream, Rs_fields, &rs)) {
-            LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Error: pb_decode for body");
+            LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "pb_decode for body");
             return -1;
         }
 
@@ -605,10 +595,6 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
                 ctx->beacon[a].ap.property.used = 0;
         }
 
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "total_beacons: %d ap_beacons %d", rs.config.total_beacons,
-            rs.config.max_ap_beacons);
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "vap_per_ap: %d vap_per_rq %d", rs.config.max_vap_per_ap,
-            rs.config.max_vap_per_rq);
         if (apply_config_overrides(ctx->cache, &rs)) {
             if (ctx->logf && SKY_LOG_LEVEL_DEBUG <= ctx->min_level)
                 (*ctx->logf)(SKY_LOG_LEVEL_DEBUG, "New config overrides received from server");
