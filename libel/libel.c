@@ -37,7 +37,7 @@
  * than just including the Git version string (since it will need to be updated
  * manually for every release) but cheaper bandwidth-wise.
  */
-#define SW_VERSION 3
+#define SW_VERSION 4
 
 /* Interval in seconds between requests for config params */
 #define CONFIG_REQUEST_INTERVAL (24 * SECONDS_IN_HOUR) /* 24 hours */
@@ -686,9 +686,6 @@ Sky_finalize_t sky_finalize_request(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, void
         return SKY_FINALIZE_ERROR;
     }
 
-    // Trim any excess vap from workspace
-    select_vap(ctx);
-
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
         "Processing request with %d beacons and %d virtual group APs into %d byte buffer", ctx->len,
         get_num_vaps(ctx), bufsize);
@@ -751,13 +748,19 @@ Sky_status_t sky_sizeof_request_buf(Sky_ctx_t *ctx, uint32_t *size, Sky_errno_t 
 
     if (rq_config)
         ctx->cache->config.last_config_time = 0; /* request on next serialize */
+
+    // Trim any excess vap from workspace
+    select_vap(ctx);
+
     rc = serialize_request(ctx, NULL, 0, SW_VERSION, rq_config);
 
     if (rc > 0) {
         *size = (uint32_t)rc;
         return sky_return(sky_errno, SKY_ERROR_NONE);
-    } else
+    } else {
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Failed to encode request");
         return sky_return(sky_errno, SKY_ERROR_ENCODE_ERROR);
+    }
 }
 
 /*! \brief decodes a Skyhook server response

@@ -423,11 +423,16 @@ int32_t serialize_request(
     memcpy(rq.device_id.bytes, get_ctx_device_id(ctx), get_ctx_id_length(ctx));
     rq.device_id.size = get_ctx_id_length(ctx);
 
-    // Create and serialize the request header message.
-    pb_get_encoded_size(&rq_size, Rq_fields, &rq);
+    // Create and serialize the request.
+    if (pb_get_encoded_size(&rq_size, Rq_fields, &rq) == false) {
+        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "pb_get_encoded_size");
+        return -1;
+    }
 
     // Account for necessary encryption padding.
     aes_padding_length = (AES_BLOCKLEN - rq_size % AES_BLOCKLEN) % AES_BLOCKLEN;
+
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "rq_size %d + aes padding %d", rq_size, aes_padding_length);
 
     rq_size += aes_padding_length;
 
@@ -446,6 +451,8 @@ int32_t serialize_request(
     pb_get_encoded_size(&hdr_size, RqHeader_fields, &rq_hdr);
 
     total_length = 1 + hdr_size + crypto_info_size + rq_size;
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Total length %d. 1 + %d + %d + %d", total_length, hdr_size,
+        crypto_info_size, rq_size);
 
     // Exit if we've been called just for the purpose of determining how much
     // buffer space is necessary.
@@ -454,8 +461,10 @@ int32_t serialize_request(
         return total_length;
 
     // Return an error indication if the supplied buffer is too small.
-    if (total_length > buf_len)
+    if (total_length > buf_len) {
+        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "total_length(%d) < buf_len(%d)", total_length, buf_len);
         return -1;
+    }
 
     *buf = (uint8_t)hdr_size;
 
@@ -465,16 +474,20 @@ int32_t serialize_request(
 
     if (pb_encode(&ostream, RqHeader_fields, &rq_hdr))
         bytes_written += ostream.bytes_written;
-    else
+    else {
+        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "pb_encode: RqHeader_fields");
         return -1;
+    }
 
     // Serialize the crypto_info message.
     ostream = pb_ostream_from_buffer(buf + bytes_written, crypto_info_size);
 
     if (pb_encode(&ostream, CryptoInfo_fields, &rq_crypto_info))
         bytes_written += ostream.bytes_written;
-    else
+    else {
+        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "pb_encode: CryptoInfo_fields");
         return -1;
+    }
 
     // Serialize the request body.
     //
@@ -485,8 +498,10 @@ int32_t serialize_request(
     // Initialize request body.
     if (pb_encode(&ostream, Rq_fields, &rq))
         bytes_written += ostream.bytes_written;
-    else
+    else {
+        LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "pb_encode: Rq_fields");
         return -1;
+    }
 
 #if SKY_DEBUG
     log_buffer(__FILE__, __FUNCTION__, ctx, SKY_LOG_LEVEL_DEBUG, buf, bytes_written);
@@ -576,6 +591,11 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
         // Deserialize the response body.
         istream = pb_istream_from_buffer(buf, header.rs_length - crypto_info.aes_padding_length);
 
+#if SKY_DEBUG
+        log_buffer(__FILE__, __FUNCTION__, ctx, SKY_LOG_LEVEL_DEBUG, buf,
+            header.rs_length - crypto_info.aes_padding_length);
+#endif
+
         if (!pb_decode(&istream, Rs_fields, &rs)) {
             LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "pb_decode for body");
             return -1;
@@ -645,12 +665,6 @@ static bool apply_config_overrides(Sky_cache_t *c, Rs *rs)
     if (rs->config.max_ap_beacons != 0 && rs->config.max_ap_beacons != CONFIG(c, max_ap_beacons)) {
         if (rs->config.max_ap_beacons < MAX_AP_BEACONS) {
             CONFIG(c, max_ap_beacons) = rs->config.max_ap_beacons;
-        }
-    }
-    if (rs->config.cache_match_threshold != 0 &&
-        rs->config.cache_match_threshold != CONFIG(c, cache_match_threshold)) {
-        if (rs->config.cache_match_threshold > 0 && rs->config.cache_match_threshold <= 100) {
-            CONFIG(c, cache_match_threshold) = rs->config.cache_match_threshold;
         }
     }
     if (rs->config.cache_age_threshold != 0 &&

@@ -30,7 +30,7 @@
 #define SKY_LIBEL 1
 #include "libel.h"
 
-/* #define VERBOSE_DEBUG 1 */
+// #define VERBOSE_DEBUG 1
 
 #define MIN(x, y) ((x) > (y) ? (y) : (x))
 #define NOMINAL_RSSI(b) ((b) == -1 ? (-90) : (b))
@@ -721,7 +721,7 @@ static int count_aps_in_cacheline(Sky_ctx_t *ctx, Sky_cacheline_t *cl)
 /*! \brief count number of used APs in workspace relative to a cacheline
  *
  *  @param ctx Skyhook request context
- *  @param cl the cacheline to count in, otherwise count in workspace
+ *  @param cl the cacheline to count in
  *
  *  @return number of used APs or -1 for fatal error
  */
@@ -746,7 +746,7 @@ static int count_used_aps_in_workspace(Sky_ctx_t *ctx, Sky_cacheline_t *cl)
 /*! \brief count number of used AP in cachelines
  *
  *  @param ctx Skyhook request context
- *  @param cl the cacheline to count in, otherwise count in workspace
+ *  @param cl the cacheline to count in
  *
  *  @return number of used APs or -1 for fatal error
  */
@@ -765,6 +765,31 @@ static int count_used_aps_in_cacheline(Sky_ctx_t *ctx, Sky_cacheline_t *cl)
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "%d used APs in cache", num_aps_used);
 #endif
     return num_aps_used;
+}
+
+/*! \brief count number of cells in workspace that match cacheline
+ *
+ *  @param ctx Skyhook request context
+ *  @param cl the cacheline to count in
+ *
+ *  @return number of used APs or -1 for fatal error
+ */
+static int count_cells_in_cacheline(Sky_ctx_t *ctx, Sky_cacheline_t *cl)
+{
+    int num_cells = 0;
+    int j;
+
+    if (!ctx || !cl)
+        return -1;
+    /* for each cell in workspace, compare with cacheline */
+    for (j = NUM_APS(ctx); j < NUM_BEACONS(ctx); j++) {
+        if (beacon_in_cache(ctx, &ctx->beacon[j], cl, NULL))
+            num_cells++;
+    }
+#ifdef VERBOSE_DEBUG
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "%d cells in cache", num_cells);
+#endif
+    return num_cells;
 }
 
 /*! \brief find cache entry with a match to workspace
@@ -788,7 +813,6 @@ static int count_used_aps_in_cacheline(Sky_ctx_t *ctx, Sky_cacheline_t *cl)
 int find_best_match(Sky_ctx_t *ctx)
 {
     int i; /* i iterates through cacheline */
-    int j; /* j iterates through beacons of a cacheline */
     int err; /* err breaks the seach due to bad value */
     float ratio; /* 0.0 <= ratio <= 1.0 is the degree to which workspace matches cacheline
                     In typical case this is the intersection(workspace, cache) / union(workspace, cache) */
@@ -834,52 +858,54 @@ int find_best_match(Sky_ctx_t *ctx)
             if ((num_aps_used = count_used_aps_in_workspace(ctx, cl)) < 0) {
                 err = true;
                 break;
-            }
-            if (num_aps_used) {
+            } else if (num_aps_used) {
                 /* there are some significant APs */
                 if (num_aps_used < CONFIG(ctx->cache, cache_beacon_threshold)) {
                     /* if there are only a few significant APs, Score based on ALL APs */
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache: %d: Score based on ALL APs", i);
 
-                    if ((score = count_aps_in_cacheline(ctx, cl)) < 0) {
-                        err = true;
-                        break;
+                    if (!(score = count_cells_in_cacheline(ctx, cl))) {
+                        threshold = CONFIG(ctx->cache, cache_match_all_threshold);
+                        ratio = 0.0;
+                        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
+                            "Cache: %d: score %d vs %d - cell mismatch", i, (int)round(ratio * 100),
+                            score, threshold);
+                    } else {
+                        if ((score = count_aps_in_cacheline(ctx, cl)) < 0) {
+                            threshold = CONFIG(ctx->cache, cache_match_all_threshold);
+                            err = true;
+                            break;
+                        }
+                        int unionAB =
+                            (NUM_APS(ctx) + MIN(NUM_APS(cl), CONFIG(ctx->cache, max_ap_beacons)) -
+                                score);
+                        threshold = CONFIG(ctx->cache, cache_match_all_threshold);
+                        ratio = (float)score / unionAB;
+                        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache: %d: score %d (%d/%d) vs %d", i,
+                            (int)round(ratio * 100), score, unionAB, threshold);
                     }
-                    int unionAB = (NUM_APS(ctx) +
-                                   MIN(NUM_APS(cl), CONFIG(ctx->cache, max_ap_beacons)) - score);
-                    threshold = CONFIG(ctx->cache, cache_match_all_threshold);
-                    ratio = (float)score / unionAB;
-                    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache: %d: score %d (%d/%d) vs %d", i,
-                        (int)round(ratio * 100), score, unionAB, threshold);
                 } else {
                     /* there are are enough significant APs, Score based on just Used APs */
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache: %d: Score based on just Used APs", i);
 
-                    int unionAB = count_used_aps_in_cacheline(ctx, cl);
-                    if (unionAB < 0) {
-                        err = true;
-                        break;
-                    }
-                    ratio = (float)num_aps_used / unionAB;
-                    threshold = CONFIG(ctx->cache, cache_match_used_threshold);
-                    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d: score %d (%d/%d) vs %d", i,
-                        (int)round(ratio * 100), num_aps_used, unionAB, threshold);
-                }
-            } else {
-                /* score cachelines based on cell */
-                LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache %d Score based on cell", i);
-
-                for (j = NUM_APS(ctx); j < NUM_BEACONS(ctx); j++) {
-                    if (beacon_in_cache(ctx, &ctx->beacon[j], cl, NULL)) {
-                        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache %d: cell %d type %s matches", i, j,
-                            sky_pbeacon(&ctx->beacon[j]));
-                        score = score + 1;
+                    if (!(score = count_cells_in_cacheline(ctx, cl))) {
+                        threshold = CONFIG(ctx->cache, cache_match_all_threshold);
+                        ratio = 0.0;
+                        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
+                            "Cache: %d: score %d vs %d - cell mismatch", i, (int)round(ratio * 100),
+                            score, threshold);
+                    } else {
+                        int unionAB = count_used_aps_in_cacheline(ctx, cl);
+                        if (unionAB < 0) {
+                            err = true;
+                            break;
+                        }
+                        ratio = (float)num_aps_used / unionAB;
+                        threshold = CONFIG(ctx->cache, cache_match_used_threshold);
+                        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d: score %d (%d/%d) vs %d", i,
+                            (int)round(ratio * 100), num_aps_used, unionAB, threshold);
                     }
                 }
-                ratio = (score == NUM_CELLS(ctx)) ? 1.0 : 0.0;
-                threshold = 50;
-                LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d: Score %d (%d/%d) vs %d", i,
-                    (int)round(ratio * 100), score, NUM_CELLS(ctx), threshold);
             }
         }
 
@@ -905,8 +931,6 @@ int find_best_match(Sky_ctx_t *ctx)
     }
 
     /* make a note of the best match used by add_to_cache */
-    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Best cacheline for save to cache: %d of 0..%d score %d",
-        bestput, CACHE_SIZE - 1, (int)round(bestputratio * 100));
     ctx->bestput = bestput;
 
     if (bestratio * 100 > bestthresh) {
@@ -917,6 +941,8 @@ int find_best_match(Sky_ctx_t *ctx)
     }
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache match failed. Cache %d, best score %d (vs %d)", bestc,
         (int)round(bestratio * 100), bestthresh);
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Best cacheline to save location: %d of 0..%d score %d",
+        bestput, CACHE_SIZE - 1, (int)round(bestputratio * 100));
     return -1;
 }
 

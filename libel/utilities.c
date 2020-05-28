@@ -346,7 +346,7 @@ void dump_vap(Sky_ctx_t *ctx, Beacon_t *b, const char *file, const char *func)
             mac[n / 2] = ((mac[n / 2] & 0x0F) | (value << 4));
 
         logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
-            "%s %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz VAP(%01X %01X)",
+            "%s %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz VAP(%d 0x%01X)",
             prefix, idx_b, b->ap.age, " ^^^^ ", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
             b->ap.rssi, b->ap.freq, n, value);
     }
@@ -456,19 +456,21 @@ void dump_workspace(Sky_ctx_t *ctx, const char *file, const char *func)
     }
     if (CONFIG(ctx->cache, last_config_time) == 0) {
         logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
-            "Config: Beacons:%d AP:%d VAP:%d(%d) Thresholds:%d(Match) %d(Age) %d(Beacon) %d(RSSI) Update:Pending",
+            "Config: Beacons:%d AP:%d VAP:%d(%d) Thresholds:%d & %d(Match) %d(Age) %d(Beacon) %d(RSSI) Update:Pending",
             CONFIG(ctx->cache, total_beacons), CONFIG(ctx->cache, max_ap_beacons),
             CONFIG(ctx->cache, max_vap_per_ap), CONFIG(ctx->cache, max_vap_per_rq),
-            CONFIG(ctx->cache, cache_match_threshold), CONFIG(ctx->cache, cache_age_threshold),
+            CONFIG(ctx->cache, cache_match_used_threshold),
+            CONFIG(ctx->cache, cache_match_all_threshold), CONFIG(ctx->cache, cache_age_threshold),
             CONFIG(ctx->cache, cache_beacon_threshold),
             CONFIG(ctx->cache, cache_neg_rssi_threshold),
             ctx->header.time - CONFIG(ctx->cache, last_config_time));
     } else {
         logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
-            "Config: Beacons:%d AP:%d VAP:%d(%d) Thresholds:%d(Match) %d(Age) %d(Beacon) %d(RSSI) Update:%d Sec",
+            "Config: Beacons:%d AP:%d VAP:%d(%d) Thresholds:%d & %d(Match) %d(Age) %d(Beacon) %d(RSSI) Update:%d Sec",
             CONFIG(ctx->cache, total_beacons), CONFIG(ctx->cache, max_ap_beacons),
             CONFIG(ctx->cache, max_vap_per_ap), CONFIG(ctx->cache, max_vap_per_rq),
-            CONFIG(ctx->cache, cache_match_threshold), CONFIG(ctx->cache, cache_age_threshold),
+            CONFIG(ctx->cache, cache_match_used_threshold),
+            CONFIG(ctx->cache, cache_match_all_threshold), CONFIG(ctx->cache, cache_age_threshold),
             CONFIG(ctx->cache, cache_beacon_threshold),
             CONFIG(ctx->cache, cache_neg_rssi_threshold),
             (int)((*ctx->gettime)(NULL)-CONFIG(ctx->cache, last_config_time)));
@@ -558,8 +560,10 @@ void config_defaults(Sky_cache_t *c)
         CONFIG(c, total_beacons) = TOTAL_BEACONS;
     if (CONFIG(c, max_ap_beacons) == 0)
         CONFIG(c, max_ap_beacons) = MAX_AP_BEACONS;
-    if (CONFIG(c, cache_match_threshold) == 0)
-        CONFIG(c, cache_match_threshold) = CACHE_MATCH_THRESHOLD_USED;
+    if (CONFIG(c, cache_match_used_threshold) == 0)
+        CONFIG(c, cache_match_used_threshold) = CACHE_MATCH_THRESHOLD_USED;
+    if (CONFIG(c, cache_match_all_threshold) == 0)
+        CONFIG(c, cache_match_all_threshold) = CACHE_MATCH_THRESHOLD_ALL;
     if (CONFIG(c, cache_age_threshold) == 0)
         CONFIG(c, cache_age_threshold) = CACHE_AGE_THRESHOLD;
     if (CONFIG(c, cache_beacon_threshold) == 0)
@@ -1575,7 +1579,9 @@ int64_t get_gnss_age(Sky_ctx_t *ctx, uint32_t idx)
 int32_t get_num_vaps(Sky_ctx_t *ctx)
 {
     int j, nv = 0;
-    // int total_vap = 0;
+#if SKY_DEBUG
+    int total_vap = 0;
+#endif
     Beacon_t *w;
 
     if (ctx == NULL) {
@@ -1585,10 +1591,12 @@ int32_t get_num_vaps(Sky_ctx_t *ctx)
     for (j = 0; j < NUM_APS(ctx); j++) {
         w = &ctx->beacon[j];
         nv += (w->ap.vg_len ? 1 : 0);
-        // total_vap += w->ap.vg_len;
+#if SKY_DEBUG
+        total_vap += w->ap.vg[VAP_LENGTH].len;
+#endif
     }
 
-    // LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Groups: %d, vaps: %d", nv, total_vap);
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Groups: %d, vaps: %d", nv, total_vap);
     return nv;
 }
 
@@ -1667,14 +1675,15 @@ uint8_t *select_vap(Sky_ctx_t *ctx)
             }
         }
     }
-    /* Complete the virtual group patch bytes with index of parent */
+    /* Complete the virtual group patch bytes with index of parent and update length */
     for (j = 0; j < NUM_APS(ctx); j++) {
         w = &ctx->beacon[j];
         w->ap.vg[VAP_PARENT].ap = j;
-        w->ap.vg[VAP_LENGTH].ap = cap_vap[j] + VAP_PARENT;
-        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "AP: %d len: %d", j, cap_vap[j]);
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "AP: %d len: %d -> %d", w->ap.vg[VAP_PARENT].ap,
+            w->ap.vg[VAP_LENGTH].len, cap_vap[j] + VAP_PARENT);
+        w->ap.vg[VAP_LENGTH].len = cap_vap[j] ? cap_vap[j] + VAP_PARENT : 0;
         dump_hex16(__FILE__, __FUNCTION__, ctx, SKY_LOG_LEVEL_DEBUG, w->ap.vg + 1,
-            w->ap.vg[VAP_LENGTH].ap, 0);
+            w->ap.vg[VAP_LENGTH].len, 0);
     }
     return 0;
 }
