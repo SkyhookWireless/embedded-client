@@ -37,15 +37,15 @@
 #define MAX_AP_BEACONS 10
 /*! \brief The maximum number of child APs in a Virtual Group
  */
-#define MAX_VAP_PER_AP 6
+#define MAX_VAP_PER_AP 4
 /*! \brief The maximum number of child APs total in a request
  */
-#define MAX_VAP_PER_RQ 24
+#define MAX_VAP_PER_RQ 12
 
 /*! \brief The percentage of beacons that must match in a cached scan/location
  */
 #define CACHE_MATCH_THRESHOLD_USED 50 // Score needed when matching just Used APs
-#define CACHE_MATCH_THRESHOLD_ALL 75 // Score needed when matching Used and Unused APs
+#define CACHE_MATCH_THRESHOLD_ALL 65 // Score needed when matching Used and Unused APs
 
 /*! \brief The maximum age (in hr) that a cached value is concidered useful
  */
