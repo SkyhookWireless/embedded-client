@@ -366,28 +366,33 @@ void dump_vap(Sky_ctx_t *ctx, Beacon_t *b, const char *file, const char *func)
 void dump_ap(Sky_ctx_t *ctx, char *str, Beacon_t *b, const char *file, const char *func)
 {
 #if SKY_DEBUG
-    int idx_b, cached = 0;
+    int idx_b, idx_c, connected, cached = 0;
 
     if (str == NULL)
         str = "AP:";
     /* Test whether beacon is in cache or workspace */
-    if (b >= ctx->beacon && b < ctx->beacon + MAX_AP_BEACONS + 1)
+    if (b >= ctx->beacon && b < ctx->beacon + MAX_AP_BEACONS + 1) {
         idx_b = b - ctx->beacon;
-    else if (b >= ctx->cache->cacheline[0].beacon &&
-             b < ctx->cache->cacheline[CACHE_SIZE].beacon +
-                     ctx->cache->cacheline[CACHE_SIZE].ap_len) {
+        connected = (ctx->connected == idx_b);
+    } else if (b >= ctx->cache->cacheline[0].beacon &&
+               b < ctx->cache->cacheline[CACHE_SIZE].beacon +
+                       ctx->cache->cacheline[CACHE_SIZE].ap_len) {
         cached = 1;
         idx_b = b - ctx->cache->cacheline[0].beacon;
+        idx_c = idx_b / TOTAL_BEACONS;
         idx_b %= MAX_AP_BEACONS;
-    } else
+        connected = (ctx->cache->cacheline[idx_c].connected == idx_b);
+    } else {
         idx_b = 0;
+        connected = false;
+    }
     if (idx_b > MAX_AP_BEACONS || idx_b < 0) {
         LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Out of bounds!");
         return;
     }
     logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
-        "%s %-2d: WiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz vap: %d",
-        str, idx_b, b->ap.age,
+        "%s %-2d:%.1sWiFi Age: %d %s MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %-4d %-4d MHz vap: %d",
+        str, idx_b, (connected ? "*" : " "), b->ap.age,
         (cached || b->ap.property.in_cache) ? (b->ap.property.used ? "Used  " : "Unused") :
                                               "      ",
         b->ap.mac[0], b->ap.mac[1], b->ap.mac[2], b->ap.mac[3], b->ap.mac[4], b->ap.mac[5],
@@ -419,33 +424,37 @@ void dump_workspace(Sky_ctx_t *ctx, const char *file, const char *func)
             break;
         case SKY_BEACON_CDMA:
             logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
-                " workspace: %-2d: CDMA Age: %d sid: %d, nid: %d, bsid: %d, rssi: %d", i,
-                ctx->beacon[i].cdma.age, ctx->beacon[i].cdma.sid, ctx->beacon[i].cdma.nid,
-                ctx->beacon[i].cdma.bsid, ctx->beacon[i].cdma.rssi);
+                " workspace: %-2d:%.1sCDMA Age: %d sid: %d, nid: %d, bsid: %d, rssi: %d", i,
+                ctx->connected == i ? "*" : " ", ctx->beacon[i].cdma.age, ctx->beacon[i].cdma.sid,
+                ctx->beacon[i].cdma.nid, ctx->beacon[i].cdma.bsid, ctx->beacon[i].cdma.rssi);
             break;
         case SKY_BEACON_GSM:
             logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
-                " workspace: %-2d: GSM Age: %d lac: %d, ui: %d, mcc: %d, mnc: %d, rssi: %d", i,
-                ctx->beacon[i].gsm.age, ctx->beacon[i].gsm.lac, ctx->beacon[i].gsm.ci,
-                ctx->beacon[i].gsm.mcc, ctx->beacon[i].gsm.mnc, ctx->beacon[i].gsm.rssi);
+                " workspace: %-2d:%.1sGSM Age: %d lac: %d, ui: %d, mcc: %d, mnc: %d, rssi: %d", i,
+                ctx->connected == i ? "*" : " ", ctx->beacon[i].gsm.age, ctx->beacon[i].gsm.lac,
+                ctx->beacon[i].gsm.ci, ctx->beacon[i].gsm.mcc, ctx->beacon[i].gsm.mnc,
+                ctx->beacon[i].gsm.rssi);
             break;
         case SKY_BEACON_LTE:
             logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
-                " workspace: %-2d: LTE Age: %d e-cellid: %d, mcc: %d, mnc: %d, tac: %d, rssi: %d",
-                i, ctx->beacon[i].lte.age, ctx->beacon[i].lte.e_cellid, ctx->beacon[i].lte.mcc,
-                ctx->beacon[i].lte.mnc, ctx->beacon[i].lte.tac, ctx->beacon[i].lte.rssi);
+                " workspace: %-2d:%.1sLTE Age: %d e-cellid: %d, mcc: %d, mnc: %d, tac: %d, rssi: %d",
+                i, ctx->connected == i ? "*" : " ", ctx->beacon[i].lte.age,
+                ctx->beacon[i].lte.e_cellid, ctx->beacon[i].lte.mcc, ctx->beacon[i].lte.mnc,
+                ctx->beacon[i].lte.tac, ctx->beacon[i].lte.rssi);
             break;
         case SKY_BEACON_NBIOT:
             logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
-                " workspace: %-2d: NB-IoT Age: %d mcc: %d, mnc: %d, e_cellid: %d, tac: %d, rssi: %d",
-                i, ctx->beacon[i].nbiot.age, ctx->beacon[i].nbiot.mcc, ctx->beacon[i].nbiot.mnc,
-                ctx->beacon[i].nbiot.e_cellid, ctx->beacon[i].nbiot.tac, ctx->beacon[i].nbiot.rssi);
+                " workspace: %-2d:%.1sNB-IoT Age: %d mcc: %d, mnc: %d, e_cellid: %d, tac: %d, rssi: %d",
+                i, ctx->connected == i ? "*" : " ", ctx->beacon[i].nbiot.age,
+                ctx->beacon[i].nbiot.mcc, ctx->beacon[i].nbiot.mnc, ctx->beacon[i].nbiot.e_cellid,
+                ctx->beacon[i].nbiot.tac, ctx->beacon[i].nbiot.rssi);
             break;
         case SKY_BEACON_UMTS:
             logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
-                " workspace: %-2d: UMTS Age: %d lac: %d, ucid: %d, mcc: %d, mnc: %d, rssi: %d", i,
-                ctx->beacon[i].umts.age, ctx->beacon[i].umts.lac, ctx->beacon[i].umts.ucid,
-                ctx->beacon[i].umts.mcc, ctx->beacon[i].umts.mnc, ctx->beacon[i].umts.rssi);
+                " workspace: %-2d:%.1sUMTS Age: %d lac: %d, ucid: %d, mcc: %d, mnc: %d, rssi: %d",
+                i, ctx->connected == i ? "*" : " ", ctx->beacon[i].umts.age,
+                ctx->beacon[i].umts.lac, ctx->beacon[i].umts.ucid, ctx->beacon[i].umts.mcc,
+                ctx->beacon[i].umts.mnc, ctx->beacon[i].umts.rssi);
             break;
         case SKY_BEACON_BLE:
         case SKY_BEACON_MAX:
@@ -511,30 +520,33 @@ void dump_cache(Sky_ctx_t *ctx, const char *file, const char *func)
                     break;
                 case SKY_BEACON_CDMA:
                     logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
-                        "     cache: %-2d:%-2d: Type: CDMA, sid: %d, nid: %d, bsid: %d, rssi: %d",
-                        i, j, b->cdma.sid, b->cdma.nid, b->cdma.bsid, b->cdma.rssi);
+                        "     cache: %-2d:%-2d:%.1sCDMA, sid: %d, nid: %d, bsid: %d, rssi: %d", i,
+                        j, (c->connected == j) ? "*" : " ", b->cdma.sid, b->cdma.nid, b->cdma.bsid,
+                        b->cdma.rssi);
                     break;
                 case SKY_BEACON_GSM:
                     logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
-                        "     cache: %-2d:%-2d: Type: GSM, lac: %d, ui: %d, mcc: %d, mnc: %d, rssi: %d",
-                        i, j, b->gsm.lac, b->gsm.ci, b->gsm.mcc, b->gsm.mnc, b->gsm.rssi);
+                        "     cache: %-2d:%-2d:%.1sGSM, lac: %d, ui: %d, mcc: %d, mnc: %d, rssi: %d",
+                        i, j, (c->connected == j) ? "*" : " ", b->gsm.lac, b->gsm.ci, b->gsm.mcc,
+                        b->gsm.mnc, b->gsm.rssi);
                     break;
                 case SKY_BEACON_LTE:
                     logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
-                        "     cache: %-2d:%-2d: Age: %d Type: LTE, e-cellid: %d, mcc: %d, mnc: %d, tac: %d, rssi: %d",
-                        i, j, b->lte.age, b->lte.e_cellid, b->lte.mcc, b->lte.mnc, b->lte.tac,
-                        b->lte.rssi);
+                        "     cache: %-2d:%-2d:%.1sLTE, e-cellid: %d, mcc: %d, mnc: %d, tac: %d, rssi: %d",
+                        i, j, (c->connected == j) ? "*" : " ", b->lte.e_cellid, b->lte.mcc,
+                        b->lte.mnc, b->lte.tac, b->lte.rssi);
                     break;
                 case SKY_BEACON_NBIOT:
                     logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
-                        "     cache: %-2d:%-2d: Type: NB-IoT, mcc: %d, mnc: %d, e_cellid: %d, tac: %d, rssi: %d",
-                        i, j, b->nbiot.mcc, b->nbiot.mnc, b->nbiot.e_cellid, b->nbiot.tac,
-                        b->nbiot.rssi);
+                        "     cache: %-2d:%-2d:%.1sNB-IoT, mcc: %d, mnc: %d, e_cellid: %d, tac: %d, rssi: %d",
+                        i, j, (c->connected == j) ? "*" : " ", b->nbiot.mcc, b->nbiot.mnc,
+                        b->nbiot.e_cellid, b->nbiot.tac, b->nbiot.rssi);
                     break;
                 case SKY_BEACON_UMTS:
                     logfmt(file, func, ctx, SKY_LOG_LEVEL_DEBUG,
-                        "     cache: %-2d:%-2d: Type: UMTS, lac: %d, ucid: %d, mcc: %d, mnc: %d, rssi: %d",
-                        i, j, b->umts.lac, b->umts.ucid, b->umts.mcc, b->umts.mnc, b->umts.rssi);
+                        "     cache: %-2d:%-2d:%.1sUMTS, lac: %d, ucid: %d, mcc: %d, mnc: %d, rssi: %d",
+                        i, j, (c->connected == j) ? "*" : " ", b->umts.lac, b->umts.ucid,
+                        b->umts.mcc, b->umts.mnc, b->umts.rssi);
                     break;
                 case SKY_BEACON_BLE:
                 case SKY_BEACON_MAX:
