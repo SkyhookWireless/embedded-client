@@ -79,12 +79,11 @@ typedef struct sky_ctx {
     Sky_log_level_t min_level;
     Sky_timefn_t gettime;
     int16_t len; /* number of beacons in list (0 == none) */
-    Beacon_t beacon[TOTAL_BEACONS + 1]; /* beacon data */
-    bool in_cache[TOTAL_BEACONS]; /* beacon in cache */
     int16_t ap_len; /* number of AP beacons in list (0 == none) */
-    int16_t connected; /* which beacon is conneted (-1 == none) */
+    Beacon_t beacon[TOTAL_BEACONS + 1]; /* beacon data */
     Gps_t gps; /* GNSS info */
     /* Assume worst case is that beacons and gps info takes twice the bare structure size */
+    int16_t connected; /* which beacon is conneted (-1 == none) */
     int16_t bestput; /* cacheline with best match for saving */
     Sky_cache_t *cache;
 } Sky_ctx_t;
