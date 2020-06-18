@@ -510,55 +510,6 @@ static Sky_status_t compress_virtual_ap(Sky_ctx_t *ctx)
     return SKY_ERROR;
 }
 
-#if 0
-/*! \brief try to make space for cell in workspace by prioritizing cells
- *         Best cell is the serving cell,
- *         Next best if youngest, then strongest, then most recently added
- *         
- *  @param ctx Skyhook request context
- *  @param b pointer to new beacon
- *  @param is_connected This beacon is currently connected
- *
- *  @return SKY_SUCCESS if beacon removed or SKY_ERROR otherwise
- */
-static Sky_status_t choose_cell(Sky_ctx_t *ctx, Beacon_t *b, bool is_connected)
-{
-    int j, age, rssi, tmp, n = -1;
-    int cmp = 0, rm = -1;
-    int keep = -1;
-#if SKY_DEBUG
-    bool cached = false;
-#endif
-
-    DUMP_WORKSPACE(ctx);
-
-    if (!b)
-        return SKY_ERROR_BAD_PARAMETERS;
-
-    if (is_connected) {
-        if (NUM_BEACONS(ctx) - NUM_APS(ctx)) {
-            age = CONFIG(ctx->cache, cache_age_threshold) * SECONDS_IN_HOUR;
-            rssi = -157;
-            for (rm = j = NUM_APS(ctx); j < NUM_BEACONS(ctx); j++) {
-                if ((tmp = get_age(&ctx->beacon[j])) < age) {
-                    rm = j;
-                    age = tmp;
-                } else if (rm != -1 && tmp == get_cell_age(&ctx->beacon[j]) &&
-                           ((tmp = get_cell_rssi(&ctx->beacon[j])) > rssi)) {
-                    rm = j;
-                    rssi = tmp;
-                } else if (rm != -1 && tmp == get_cell_rssi(&ctx->beacon[j]))
-                    return remove_beacon(ctx, j);
-            }
-            return remove_beacon(ctx, rm);
-        }
-        /* Empty workspace - no cell to remove */
-        return SKY_SUCCESS;
-    }
-    /* New beacon is not connected */
-}
-#endif
-
 /*! \brief add beacon to list in workspace context
  *
  *   if beacon is not AP and workspace is full (of non-AP), pick best one
@@ -634,8 +585,10 @@ Sky_status_t add_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon_t *b, boo
         c = &ctx->cache->cacheline[ctx->cache->newest].beacon[j];
         if (w->ap.property.in_cache) {
             w->ap.property.used = c->ap.property.used;
+#if SKY_DEBUG
             dump_ap(ctx, "() Worksp", w, __FILE__, __FUNCTION__);
             dump_ap(ctx, "() Cache ", c, __FILE__, __FUNCTION__);
+#endif
         } else
             w->ap.property.used = false;
 
