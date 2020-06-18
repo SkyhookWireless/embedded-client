@@ -607,10 +607,11 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
         loc->location_source = (Sky_loc_source_t)rs.source;
         // Extract Used info for each AP from the Used_aps bytes
         for (a = 0; a < ctx->ap_len; a++) {
-            i = rs.used_aps.size - 1 - (a / 8);
-            // LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Used: AP %d, Byte: 0x%02X idx: %d:%d", a, rs.used_aps.bytes[i], i, (a % 8));
-            if (a < rs.used_aps.size * 8)
-                ctx->beacon[a].ap.property.used = rs.used_aps.bytes[i] & (1 << (a % 8)) ? 1 : 0;
+            i = rs.used_aps.size - 1 - (a / sizeof(*rs.used_aps.bytes));
+            // being careful here. Expect to get one bit per ap, but handle case where server responds differently
+            if (a < rs.used_aps.size * sizeof(*rs.used_aps.bytes))
+                ctx->beacon[a].ap.property.used =
+                    rs.used_aps.bytes[i] & (1 << (a % sizeof(*rs.used_aps.bytes))) ? 1 : 0;
             else
                 ctx->beacon[a].ap.property.used = 0;
         }
