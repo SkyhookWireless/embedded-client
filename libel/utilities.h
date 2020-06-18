@@ -31,6 +31,12 @@
 #define LOGFMT(...) logfmt(__FILE__, __FUNCTION__, __VA_ARGS__)
 #define LOG_BUFFER(c, l, b, s) log_buffer(__FILE__, __FUNCTION__, c, l, b, s);
 #else
+#define DUMP_WORKSPACE(...)                                                                        \
+    do {                                                                                           \
+    } while (0)
+#define DUMP_CACHE(...)                                                                            \
+    do {                                                                                           \
+    } while (0)
 #define LOGFMT(...)                                                                                \
     do {                                                                                           \
     } while (0)
