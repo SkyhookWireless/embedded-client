@@ -374,9 +374,8 @@ void dump_ap(Sky_ctx_t *ctx, char *str, Beacon_t *b, const char *file, const cha
     if (b >= ctx->beacon && b < ctx->beacon + MAX_AP_BEACONS + 1) {
         idx_b = b - ctx->beacon;
         connected = (ctx->connected == idx_b);
-    } else if (b >= ctx->cache->cacheline[0].beacon &&
-               b < ctx->cache->cacheline[CACHE_SIZE].beacon +
-                       ctx->cache->cacheline[CACHE_SIZE].ap_len) {
+    } else if (b >= &ctx->cache->cacheline[0].beacon[0] &&
+               b <= &ctx->cache->cacheline[CACHE_SIZE - 1].beacon[MAX_AP_BEACONS - 1]) {
         cached = 1;
         idx_b = b - ctx->cache->cacheline[0].beacon;
         idx_c = idx_b / TOTAL_BEACONS;
