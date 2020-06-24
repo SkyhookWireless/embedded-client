@@ -1690,11 +1690,15 @@ uint8_t *select_vap(Sky_ctx_t *ctx)
     for (j = 0; j < NUM_APS(ctx); j++) {
         w = &ctx->beacon[j];
         w->ap.vg[VAP_PARENT].ap = j;
+#if 0
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "AP: %d len: %d -> %d", w->ap.vg[VAP_PARENT].ap,
             w->ap.vg[VAP_LENGTH].len, cap_vap[j] + VAP_PARENT);
+#endif
         w->ap.vg[VAP_LENGTH].len = cap_vap[j] ? cap_vap[j] + VAP_PARENT : 0;
+#if 0
         dump_hex16(__FILE__, __FUNCTION__, ctx, SKY_LOG_LEVEL_DEBUG, w->ap.vg + 1,
             w->ap.vg[VAP_LENGTH].len, 0);
+#endif
     }
     return 0;
 }

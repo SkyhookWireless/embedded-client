@@ -30,7 +30,7 @@
 #define SKY_LIBEL 1
 #include "libel.h"
 
-// #define VERBOSE_DEBUG 1
+// #define VERBOSE_DEBUG
 
 #define MIN(x, y) ((x) > (y) ? (y) : (x))
 #define NOMINAL_RSSI(b) ((b) == -1 ? (-90) : (b))
@@ -97,7 +97,7 @@ static int ap_similar(Sky_ctx_t *ctx, Beacon_t *apA, Beacon_t *apB, int *pn)
         return 0;
 
     if ((b = mac_similar(ctx, apA->ap.mac, apB->ap.mac, &n)) == 0) {
-#if VERBOSE_DEBUG
+#ifdef VERBOSE_DEBUG
         dump_ap(ctx, "  Differ A ", apA, __FILE__, __FUNCTION__);
         dump_ap(ctx, "         B ", apB, __FILE__, __FUNCTION__);
 #endif
@@ -107,7 +107,7 @@ static int ap_similar(Sky_ctx_t *ctx, Beacon_t *apA, Beacon_t *apB, int *pn)
     /* Check that children have difference in same nibble */
     for (v = 0; v < apA->ap.vg_len; v++)
         if (apA->ap.vg[v + VAP_FIRST_DATA].data.nibble_idx != n) {
-#if VERBOSE_DEBUG
+#ifdef VERBOSE_DEBUG
             dump_ap(ctx, "Mismatch A*", apA, __FILE__, __FUNCTION__);
             dump_ap(ctx, "         B ", apB, __FILE__, __FUNCTION__);
 #endif
@@ -115,7 +115,7 @@ static int ap_similar(Sky_ctx_t *ctx, Beacon_t *apA, Beacon_t *apB, int *pn)
         }
     for (v = 0; v < apB->ap.vg_len; v++)
         if (apB->ap.vg[v + VAP_FIRST_DATA].data.nibble_idx != n) {
-#if VERBOSE_DEBUG
+#ifdef VERBOSE_DEBUG
             dump_ap(ctx, "Mismatch A ", apA, __FILE__, __FUNCTION__);
             dump_ap(ctx, "         B*", apB, __FILE__, __FUNCTION__);
 #endif
@@ -123,7 +123,7 @@ static int ap_similar(Sky_ctx_t *ctx, Beacon_t *apA, Beacon_t *apB, int *pn)
         }
     if (pn)
         *pn = n;
-#if VERBOSE_DEBUG
+#ifdef VERBOSE_DEBUG
     dump_ap(ctx, "   Match A ", apA, __FILE__, __FUNCTION__);
     dump_ap(ctx, "         B ", apB, __FILE__, __FUNCTION__);
 #endif
@@ -364,14 +364,17 @@ static Sky_status_t filter_by_rssi(Sky_ctx_t *ctx)
 
     /* if beacon with min RSSI is below threshold, */
     /* throw out weak one, not in cache, not Virtual Group or Unused  */
-    if (NOMINAL_RSSI(ctx->beacon[0].ap.rssi) < -CONFIG(ctx->cache, cache_neg_rssi_threshold)) {
+    LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "rssi values %d vs %d", NOMINAL_RSSI(ctx->beacon[0].ap.rssi),
+        CONFIG(ctx->cache, cache_neg_rssi_threshold));
+    if (NOMINAL_RSSI(ctx->beacon[0].ap.rssi) < CONFIG(ctx->cache, cache_neg_rssi_threshold)) {
+        LOGFMT(ctx, SKY_LOG_LEVEL_WARNING, "Warning: rssi values low. Looking for weak one");
         for (i = 0, reject = -1; i < NUM_APS(ctx) && reject == -1; i++) {
-            if (ctx->beacon[i].ap.rssi < -CONFIG(ctx->cache, cache_neg_rssi_threshold) &&
+            if (ctx->beacon[i].ap.rssi < CONFIG(ctx->cache, cache_neg_rssi_threshold) &&
                 !ctx->beacon[i].ap.property.in_cache && !ctx->beacon[i].ap.vg_len)
                 reject = i;
         }
         for (i = 0; i < NUM_APS(ctx) && reject == -1; i++) {
-            if (ctx->beacon[i].ap.rssi < -CONFIG(ctx->cache, cache_neg_rssi_threshold) &&
+            if (ctx->beacon[i].ap.rssi < CONFIG(ctx->cache, cache_neg_rssi_threshold) &&
                 ctx->beacon[i].ap.property.in_cache && !ctx->beacon[i].ap.vg_len &&
                 !ctx->beacon[i].ap.property.used)
                 reject = i;
@@ -479,7 +482,7 @@ static Sky_status_t compress_virtual_ap(Sky_ctx_t *ctx)
     }
 
     for (j = 0; j < ctx->ap_len - 1; j++) {
-#if VERBOSE_DEBUG
+#ifdef VERBOSE_DEBUG
         dump_ap(ctx, "cmp", &ctx->beacon[j], __FILE__, __FUNCTION__);
 #endif
         for (i = j + 1; i < ctx->ap_len; i++) {
@@ -504,7 +507,7 @@ static Sky_status_t compress_virtual_ap(Sky_ctx_t *ctx)
             }
         }
     }
-#if VERBOSE_DEBUG
+#ifdef VERBOSE_DEBUG
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "no match");
 #endif
     return SKY_ERROR;
@@ -633,7 +636,7 @@ static int beacon_in_vg(Sky_ctx_t *ctx, Beacon_t *b, Beacon_t *vg)
         LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "bad params");
         return false;
     }
-#if VERBOSE_DEBUG
+#ifdef VERBOSE_DEBUG
     dump_ap(ctx, "workspc ", b, __FILE__, __FUNCTION__);
     dump_ap(ctx, "cache   ", vg, __FILE__, __FUNCTION__);
 #endif
@@ -664,10 +667,12 @@ static int beacon_in_vg(Sky_ctx_t *ctx, Beacon_t *b, Beacon_t *vg)
                     value;
             }
             if (memcmp(mac_b, mac_vg, MAC_SIZE) == 0) {
+#ifdef VERBOSE_DEBUG
                 LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Match: Children w:%d c:%d", w, c);
+#endif
                 num_aps++;
             }
-#if VERBOSE_DEBUG
+#ifdef VERBOSE_DEBUG
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                 "cmp MAC %02X:%02X:%02X:%02X:%02X:%02X with %02X:%02X:%02X:%02X:%02X:%02X, num_aps %d",
                 mac_b[0], mac_b[1], mac_b[2], mac_b[3], mac_b[4], mac_b[5], mac_vg[0], mac_vg[1],
