@@ -371,7 +371,7 @@ int main(int ac, char **av)
     case SKY_FINALIZE_REQUEST:
         break;
     }
-    DUMP_WORKSPACE(ctx)
+    DUMP_WORKSPACE(ctx);
 
     for (t = SKY_BEACON_AP; t != SKY_BEACON_MAX; t++) {
         printf("get_num_beacons: %d, %d\n", t, i = get_num_beacons(ctx, t));
@@ -389,11 +389,11 @@ int main(int ac, char **av)
                 ctx->beacon[i].ap.property.used = (rand() % 9 > 3);
             }
             /* after last ap, get the Virtual APs */
-            int vg = get_num_vap_delta(ctx);
+            int vg = get_num_vaps(ctx);
             if (vg) {
                 int w;
                 for (w = 0; w < vg; w++)
-                    printf("get_vap_delta:      %d, %04llX\n", w, (long long)get_vap_delta(ctx, w));
+                    printf("get_vap_data:      %d, %04llX\n", w, (long long)get_vap_data(ctx, w));
             }
         }
         if (t == SKY_BEACON_GSM)
