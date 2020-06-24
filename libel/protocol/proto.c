@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <math.h>
+#include <limits.h>
 
 #include <pb_encode.h>
 #include <pb_decode.h>
@@ -605,13 +606,16 @@ int32_t deserialize_response(Sky_ctx_t *ctx, uint8_t *buf, uint32_t buf_len, Sky
         loc->lon = rs.lon;
         loc->hpe = (uint16_t)rs.hpe;
         loc->location_source = (Sky_loc_source_t)rs.source;
+        LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "used size %d", rs.used_aps.size);
+        log_buffer(
+            __FILE__, __FUNCTION__, ctx, SKY_LOG_LEVEL_DEBUG, rs.used_aps.bytes, rs.used_aps.size);
         // Extract Used info for each AP from the Used_aps bytes
         for (a = 0; a < ctx->ap_len; a++) {
-            i = rs.used_aps.size - 1 - (a / sizeof(*rs.used_aps.bytes));
+            i = rs.used_aps.size - 1 - (a / CHAR_BIT);
             // being careful here. Expect to get one bit per ap, but handle case where server responds differently
-            if (a < rs.used_aps.size * sizeof(*rs.used_aps.bytes))
+            if (a < rs.used_aps.size * CHAR_BIT)
                 ctx->beacon[a].ap.property.used =
-                    rs.used_aps.bytes[i] & (1 << (a % sizeof(*rs.used_aps.bytes))) ? 1 : 0;
+                    rs.used_aps.bytes[i] & (1 << (a % CHAR_BIT)) ? 1 : 0;
             else
                 ctx->beacon[a].ap.property.used = 0;
         }
