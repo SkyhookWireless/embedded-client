@@ -1,0 +1,8 @@
+#!/bin/bash
+
+for file in elgsim.match.Lowes-in.conf elgsim.match.Lowes-interleave.conf elgsim.match.Lowes-out.conf elgsim.match.Lowes-walk.conf 
+    do
+    echo ${file}
+    bin/elgsim scanlist/${file}
+    done
+
