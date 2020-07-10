@@ -132,14 +132,18 @@ typedef int (*Sky_randfn_t)(uint8_t *rand_buf, uint32_t bufsize);
  */
 typedef time_t (*Sky_timefn_t)(time_t *t);
 
-#ifdef SKY_LIBEL
-#include "config.h"
-#include "beacons.h"
-#include "workspace.h"
-#include "utilities.h"
-#else
+#ifndef SKY_LIBEL
+#include "aes.h"
+#include "crc32.h"
 typedef void Sky_ctx_t;
 #define MAC_SIZE 6
+#else
+#include "aes.h"
+#include "config.h"
+#include "beacons.h"
+#include "crc32.h"
+#include "workspace.h"
+#include "utilities.h"
 #endif
 
 Sky_status_t sky_open(Sky_errno_t *sky_errno, uint8_t *device_id, uint32_t id_len,
@@ -156,21 +160,30 @@ Sky_status_t sky_add_ap_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uint8_t m
     time_t timestamp, int16_t rssi, int32_t freq, bool is_connected);
 
 Sky_status_t sky_add_cell_lte_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uint16_t tac,
-    uint32_t e_cellid, uint16_t mcc, uint16_t mnc, time_t timestamp, int16_t rsrp,
+    uint32_t e_cellid, uint16_t mcc, uint16_t mnc, int16_t pci, int32_t earfcn, time_t timestamp, int16_t rsrp,
     bool is_connected);
+
+Sky_status_t sky_add_cell_lte_neighbor_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno,
+    int16_t pci, int32_t earfcn, time_t timestamp, int16_t rsrp);
 
 Sky_status_t sky_add_cell_gsm_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uint16_t lac,
     uint32_t ui, uint16_t mcc, uint16_t mnc, time_t timestamp, int16_t rssi, bool is_connected);
 
 Sky_status_t sky_add_cell_umts_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uint16_t lac,
-    uint32_t ui, uint16_t mcc, uint16_t mnc, time_t timestamp, int16_t rscp, bool is_connected);
+    uint32_t ui, uint16_t mcc, uint16_t mnc, int16_t psc, int16_t uarfcn, time_t timestamp, int16_t rscp, bool is_connected);
+
+Sky_status_t sky_add_cell_umts_neighbor_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno,
+    int16_t psc, int16_t uarfcn, time_t timestamp, int16_t rscp);
 
 Sky_status_t sky_add_cell_cdma_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uint32_t sid,
     uint16_t nid, uint16_t bsid, time_t timestamp, int16_t rssi, bool is_connected);
 
 Sky_status_t sky_add_cell_nb_iot_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uint16_t mcc,
-    uint16_t mnc, uint32_t e_cellid, uint32_t tac, time_t timestamp, int16_t nrsrp,
+    uint16_t mnc, uint32_t e_cellid, uint32_t tac, int16_t ncid, int32_t earfcn, time_t timestamp, int16_t nrsrp,
     bool is_connected);
+
+Sky_status_t sky_add_cell_nb_iot_neighbor_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno,
+    int16_t ncid, int32_t earfcn, time_t timestamp, int16_t nrsrp);
 
 Sky_status_t sky_add_gnss(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, float lat, float lon,
     uint16_t hpe, float altitude, uint16_t vpe, float speed, float bearing, uint16_t nsat,

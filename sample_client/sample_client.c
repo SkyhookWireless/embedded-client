@@ -263,6 +263,8 @@ int main(int argc, char *argv[])
         14962, // ucid
         603, // mcc
         1, // mnc
+        33, // pci
+        44, // earfcn
         timestamp - 315, // timestamp
         -100, // rscp
         0); // serving
@@ -270,6 +272,30 @@ int main(int argc, char *argv[])
         printf("Cell UMTS added\n");
     else
         printf("Error adding UMTS cell: '%s'\n", sky_perror(sky_errno));
+
+    /* Add UMTS neighbor cell */
+    ret_status = sky_add_cell_umts_neighbor_beacon(ctx, &sky_errno,
+        33, // pci
+        44, // earfcn
+        timestamp - 315, // timestamp
+        -100); // rscp
+
+    if (ret_status == SKY_SUCCESS)
+        printf("Cell neighbor UMTS added\n");
+    else
+        printf("Error adding UMTS neighbor cell: '%s'\n", sky_perror(sky_errno));
+
+    /* Add another UMTS neighbor cell */
+    ret_status = sky_add_cell_umts_neighbor_beacon(ctx, &sky_errno,
+        55, // pci
+        66, // earfcn
+        timestamp - 316, // timestamp
+        -101); // rscp
+
+    if (ret_status == SKY_SUCCESS)
+        printf("Cell neighbor UMTS added\n");
+    else
+        printf("Error adding UMTS neighbor cell: '%s'\n", sky_perror(sky_errno));
 
     /* Add CDMA cell */
     ret_status = sky_add_cell_cdma_beacon(ctx, &sky_errno,

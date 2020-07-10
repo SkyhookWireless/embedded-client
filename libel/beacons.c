@@ -82,6 +82,11 @@ static Sky_status_t remove_beacon(Sky_ctx_t *ctx, int index)
 
     if (ctx->beacon[index].h.type == SKY_BEACON_AP)
         NUM_APS(ctx) -= 1;
+        if (ctx->connected == index)
+            ctx->connected = -1;
+        else if (index < ctx->connected)
+            // Removed beacon precedes the connected one, so update its index.
+            ctx->connected--;
 
     memmove(&ctx->beacon[index], &ctx->beacon[index + 1],
         sizeof(Beacon_t) * (NUM_BEACONS(ctx) - index - 1));
@@ -134,7 +139,12 @@ static Sky_status_t insert_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, Beacon
     /* report back the position beacon was added */
     if (index != NULL)
         *index = i;
+
     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Beacon type %s inserted idx: %d", sky_pbeacon(b), i);
+
+    if (i <= ctx->connected)
+        // New beacon was inserted before the connected one, so update its index.
+        ctx->connected++;
 
     if (b->h.type == SKY_BEACON_AP)
         NUM_APS(ctx)++;

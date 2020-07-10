@@ -51,6 +51,7 @@ void dump_workspace(Sky_ctx_t *ctx);
 void dump_cache(Sky_ctx_t *ctx);
 void config_defaults(Sky_cache_t *c);
 int32_t get_num_beacons(Sky_ctx_t *ctx, Sky_beacon_type_t t);
+int32_t get_num_cells(Sky_ctx_t *ctx);
 int get_base_beacons(Sky_ctx_t *ctx, Sky_beacon_type_t t);
 
 uint32_t get_ctx_partner_id(Sky_ctx_t *ctx);
@@ -120,6 +121,17 @@ float get_gnss_speed(Sky_ctx_t *ctx, uint32_t idx);
 int64_t get_gnss_bearing(Sky_ctx_t *ctx, uint32_t idx);
 int64_t get_gnss_nsat(Sky_ctx_t *ctx, uint32_t idx);
 int64_t get_gnss_age(Sky_ctx_t *ctx, uint32_t idx);
+Beacon_t* get_cell(Sky_ctx_t *ctx, uint32_t idx);
+int16_t get_cell_type(Beacon_t* cell);
+int64_t get_cell_id1(Beacon_t* cell);
+int64_t get_cell_id2(Beacon_t* cell);
+int64_t get_cell_id3(Beacon_t* cell);
+int64_t get_cell_id4(Beacon_t* cell);
+int64_t get_cell_id5(Beacon_t* cell);
+int64_t get_cell_id6(Beacon_t* cell);
+bool get_cell_connected_flag(Sky_ctx_t *ctx, Beacon_t* cell);
+int64_t get_cell_rssi(Beacon_t* cell);
+int64_t get_cell_age(Beacon_t* cell);
 
 int sky_rand_fn(uint8_t *rand_buf, uint32_t bufsize);
 #endif
