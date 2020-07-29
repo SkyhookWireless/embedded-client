@@ -306,83 +306,82 @@ void dump_workspace(Sky_ctx_t *ctx)
         case SKY_BEACON_AP:
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                 " Beacon %-2d: Age: %d Type: WiFi, %sMAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %d, freq: %d",
-                i, ctx->beacon[i].ap.age, ctx->beacon[i].ap.in_cache ? "cached " : "       ",
+                i, ctx->beacon[i].h.age, ctx->beacon[i].ap.in_cache ? "cached " : "       ",
                 ctx->beacon[i].ap.mac[0], ctx->beacon[i].ap.mac[1], ctx->beacon[i].ap.mac[2],
                 ctx->beacon[i].ap.mac[3], ctx->beacon[i].ap.mac[4], ctx->beacon[i].ap.mac[5],
-                ctx->beacon[i].ap.rssi, ctx->beacon[i].ap.freq)
+                ctx->beacon[i].h.rssi, ctx->beacon[i].ap.freq)
             break;
         case SKY_BEACON_CDMA:
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                 " Beacon %-2d: Age: %d Type: CDMA, sid: %u, nid: %u, bsid: %u, rssi: %d", i,
-                ctx->beacon[i].cdma.age, ctx->beacon[i].cdma.sid, ctx->beacon[i].cdma.nid,
-                ctx->beacon[i].cdma.bsid, ctx->beacon[i].cdma.rssi)
+                ctx->beacon[i].h.age, ctx->beacon[i].cell.id2, ctx->beacon[i].cell.id3,
+                ctx->beacon[i].cell.id4, ctx->beacon[i].h.rssi)
             break;
         case SKY_BEACON_GSM:
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                 " Beacon %-2d: Age: %d Type: GSM, lac: %u, ui: %u, mcc: %u, mnc: %u, rssi: %d", i,
-                ctx->beacon[i].gsm.age, ctx->beacon[i].gsm.lac, ctx->beacon[i].gsm.ci,
-                ctx->beacon[i].gsm.mcc, ctx->beacon[i].gsm.mnc, ctx->beacon[i].gsm.rssi)
+                ctx->beacon[i].h.age, ctx->beacon[i].cell.id3, ctx->beacon[i].cell.id4,
+                ctx->beacon[i].cell.id1, ctx->beacon[i].cell.id2, ctx->beacon[i].h.rssi)
             break;
         case SKY_BEACON_LTE:
-            if (ctx->beacon[i].lte.mcc == SKY_UNKNOWN_ID1 &&
-                ctx->beacon[i].lte.mnc == SKY_UNKNOWN_ID2 &&
-                ctx->beacon[i].lte.e_cellid == SKY_UNKNOWN_ID4)
+            if (ctx->beacon[i].cell.id1 == SKY_UNKNOWN_ID1 &&
+                ctx->beacon[i].cell.id2 == SKY_UNKNOWN_ID2 &&
+                ctx->beacon[i].cell.id4 == SKY_UNKNOWN_ID4)
                 LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                     " Beacon %-2d: Age: %d Type: LTE-NMR, pci: %u, earfcn: %u, rssi: %d", i,
-                    ctx->beacon[i].lte.age, ctx->beacon[i].lte.pci, ctx->beacon[i].lte.earfcn,
-                    ctx->beacon[i].lte.rssi)
+                    ctx->beacon[i].h.age, ctx->beacon[i].cell.id5, ctx->beacon[i].cell.freq,
+                    ctx->beacon[i].h.rssi)
             else
                 LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                     " Beacon %-2d: Age: %d Type: LTE, e-cellid: %u, mcc: %u, mnc: %u, tac: %u, pci: %u, earfcn: %u, rssi: %d",
-                    i, ctx->beacon[i].lte.age, ctx->beacon[i].lte.e_cellid, ctx->beacon[i].lte.mcc,
-                    ctx->beacon[i].lte.mnc, ctx->beacon[i].lte.tac, ctx->beacon[i].lte.pci,
-                    ctx->beacon[i].lte.earfcn, ctx->beacon[i].lte.rssi)
+                    i, ctx->beacon[i].h.age, ctx->beacon[i].cell.id4, ctx->beacon[i].cell.id1,
+                    ctx->beacon[i].cell.id2, ctx->beacon[i].cell.id3, ctx->beacon[i].cell.id5,
+                    ctx->beacon[i].cell.freq, ctx->beacon[i].h.rssi)
             break;
         case SKY_BEACON_NBIOT:
-            if (ctx->beacon[i].nbiot.mcc == SKY_UNKNOWN_ID1 &&
-                ctx->beacon[i].nbiot.mnc == SKY_UNKNOWN_ID2 &&
-                ctx->beacon[i].nbiot.e_cellid == SKY_UNKNOWN_ID4)
+            if (ctx->beacon[i].cell.id1 == SKY_UNKNOWN_ID1 &&
+                ctx->beacon[i].cell.id2 == SKY_UNKNOWN_ID2 &&
+                ctx->beacon[i].cell.id4 == SKY_UNKNOWN_ID4)
                 LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                     " Beacon %-2d: Age: %d Type: NB-IoT-NMR, ncid: %u, earfcn: %u, rssi: %d", i,
-                    ctx->beacon[i].nbiot.age, ctx->beacon[i].nbiot.ncid,
-                    ctx->beacon[i].nbiot.earfcn, ctx->beacon[i].nbiot.rssi)
+                    ctx->beacon[i].h.age, ctx->beacon[i].cell.id5, ctx->beacon[i].cell.freq,
+                    ctx->beacon[i].h.rssi)
             else
                 LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                     " Beacon %-2d: Age: %d Type: NB-IoT, mcc: %u, mnc: %u, e_cellid: %u, tac: %u, ncid: %u, earfcn: %u, rssi: %d",
-                    i, ctx->beacon[i].nbiot.age, ctx->beacon[i].nbiot.mcc, ctx->beacon[i].nbiot.mnc,
-                    ctx->beacon[i].nbiot.e_cellid, ctx->beacon[i].nbiot.tac,
-                    ctx->beacon[i].nbiot.ncid, ctx->beacon[i].nbiot.earfcn,
-                    ctx->beacon[i].nbiot.rssi)
+                    i, ctx->beacon[i].h.age, ctx->beacon[i].cell.id1, ctx->beacon[i].cell.id2,
+                    ctx->beacon[i].cell.id4, ctx->beacon[i].cell.id3, ctx->beacon[i].cell.id5,
+                    ctx->beacon[i].cell.freq, ctx->beacon[i].h.rssi)
             break;
         case SKY_BEACON_UMTS:
-            if (ctx->beacon[i].umts.mcc == SKY_UNKNOWN_ID1 &&
-                ctx->beacon[i].umts.mnc == SKY_UNKNOWN_ID2 &&
-                ctx->beacon[i].umts.ucid == SKY_UNKNOWN_ID4)
+            if (ctx->beacon[i].cell.id1 == SKY_UNKNOWN_ID1 &&
+                ctx->beacon[i].cell.id2 == SKY_UNKNOWN_ID2 &&
+                ctx->beacon[i].cell.id4 == SKY_UNKNOWN_ID4)
                 LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                     " Beacon %-2d: Age: %d Type: UMTS-NMR, psc: %u, uarfcn: %u, rssi: %d", i,
-                    ctx->beacon[i].nbiot.age, ctx->beacon[i].umts.psc, ctx->beacon[i].umts.uarfcn,
-                    ctx->beacon[i].umts.rssi)
+                    ctx->beacon[i].h.age, ctx->beacon[i].cell.id5, ctx->beacon[i].cell.freq,
+                    ctx->beacon[i].h.rssi)
             else
                 LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                     " Beacon %-2d: Age: %d Type: UMTS, lac: %u, ucid: %u, mcc: %u, mnc: %u, psc: %u, uarfcn: %u, rssi: %d",
-                    i, ctx->beacon[i].umts.age, ctx->beacon[i].umts.lac, ctx->beacon[i].umts.ucid,
-                    ctx->beacon[i].umts.mcc, ctx->beacon[i].umts.mnc, ctx->beacon[i].umts.psc,
-                    ctx->beacon[i].umts.uarfcn, ctx->beacon[i].umts.rssi)
+                    i, ctx->beacon[i].h.age, ctx->beacon[i].cell.id3, ctx->beacon[i].cell.id4,
+                    ctx->beacon[i].cell.id1, ctx->beacon[i].cell.id2, ctx->beacon[i].cell.id5,
+                    ctx->beacon[i].cell.freq, ctx->beacon[i].h.rssi)
             break;
         case SKY_BEACON_NR:
-            if (ctx->beacon[i].nr.mcc == SKY_UNKNOWN_ID1 &&
-                ctx->beacon[i].nr.mnc == SKY_UNKNOWN_ID2 &&
-                ctx->beacon[i].nr.nci == SKY_UNKNOWN_ID4)
+            if (ctx->beacon[i].cell.id1 == SKY_UNKNOWN_ID1 &&
+                ctx->beacon[i].cell.id2 == SKY_UNKNOWN_ID2 &&
+                ctx->beacon[i].cell.id4 == SKY_UNKNOWN_ID4)
                 LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                     " Beacon %-2d: AGE: %d Type: NR-NMR, pci: %u, nrarfcn: %u, rssi: %d", i,
-                    ctx->beacon[i].nr.age, ctx->beacon[i].nr.pci, ctx->beacon[i].nr.nrarfcn,
-                    ctx->beacon[i].nr.rssi)
+                    ctx->beacon[i].h.age, ctx->beacon[i].cell.id5, ctx->beacon[i].cell.freq,
+                    ctx->beacon[i].h.rssi)
             else
                 LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                     " Beacon %-2d: Age: %d Type: NR, mcc: %u, mnc: %u, nci: %llu, tac: %u, pci: %u, earfcn: %u, rssi: %d",
-                    i, ctx->beacon[i].nr.age, ctx->beacon[i].nr.mcc, ctx->beacon[i].nr.mnc,
-                    ctx->beacon[i].nr.nci, ctx->beacon[i].nr.tac, ctx->beacon[i].nr.pci,
-                    ctx->beacon[i].nr.nrarfcn, ctx->beacon[i].nr.rssi)
+                    i, ctx->beacon[i].h.age, ctx->beacon[i].cell.id1, ctx->beacon[i].cell.id2,
+                    ctx->beacon[i].cell.id4, ctx->beacon[i].cell.id3, ctx->beacon[i].cell.id5,
+                    ctx->beacon[i].cell.freq, ctx->beacon[i].h.rssi)
             break;
         default:
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Beacon %-2d: Type: Unknown", i)
@@ -437,67 +436,68 @@ void dump_cache(Sky_ctx_t *ctx)
                 switch (b->h.type) {
                 case SKY_BEACON_AP:
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                        " Beacon %-2d:%-2d: Type: WiFi, MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %d, freq %d",
-                        i, j, b->ap.mac[0], b->ap.mac[1], b->ap.mac[2], b->ap.mac[3], b->ap.mac[4],
-                        b->ap.mac[5], b->ap.rssi, b->ap.freq)
+                        " Beacon %-2d:%-2d: Age: %d Type: WiFi, MAC %02X:%02X:%02X:%02X:%02X:%02X rssi: %d, freq %d",
+                        i, j, b->h.age, b->ap.mac[0], b->ap.mac[1], b->ap.mac[2], b->ap.mac[3],
+                        b->ap.mac[4], b->ap.mac[5], b->h.rssi, b->ap.freq)
                     break;
                 case SKY_BEACON_CDMA:
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                        " Beacon %-2d:%-2d: Type: CDMA, sid: %u, nid: %u, bsid: %u, rssi: %d", i, j,
-                        b->cdma.sid, b->cdma.nid, b->cdma.bsid, b->cdma.rssi)
+                        " Beacon %-2d:%-2d: Age: %d Type: CDMA, sid: %u, nid: %u, bsid: %u, rssi: %d",
+                        i, j, b->h.age, b->cell.id2, b->cell.id3, b->cell.id4, b->h.rssi)
                     break;
                 case SKY_BEACON_GSM:
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                        " Beacon %-2d:%-2d: Type: GSM, lac: %u, ui: %u, mcc: %u, mnc: %u, rssi: %d",
-                        i, j, b->gsm.lac, b->gsm.ci, b->gsm.mcc, b->gsm.mnc, b->gsm.rssi)
+                        " Beacon %-2d:%-2d: Age: %d Type: GSM, lac: %u, ui: %u, mcc: %u, mnc: %u, rssi: %d",
+                        i, j, b->h.age, b->cell.id3, b->cell.id4, b->cell.id1, b->cell.id2,
+                        b->h.rssi)
                     break;
                 case SKY_BEACON_LTE:
-                    if (b->lte.mcc == SKY_UNKNOWN_ID1 && b->lte.mnc == SKY_UNKNOWN_ID2 &&
-                        b->lte.e_cellid == SKY_UNKNOWN_ID4)
+                    if (b->cell.id1 == SKY_UNKNOWN_ID1 && b->cell.id2 == SKY_UNKNOWN_ID2 &&
+                        b->cell.id4 == SKY_UNKNOWN_ID4)
                         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                             " Beacon %-2d:%-2d: Age: %d Type: LTE-NMR, pci: %u, earfcn: %u, rssi: %d",
-                            i, j, b->lte.age, b->lte.pci, b->lte.earfcn, b->lte.rssi)
+                            i, j, b->h.age, b->cell.id5, b->cell.freq, b->h.rssi)
                     else
                         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
                             " Beacon %-2d:%-2d: Age: %d Type: LTE, e-cellid: %u, mcc: %u, mnc: %u, tac: %u, pci: %u, earfcn: %u, rssi: %d",
-                            i, j, b->lte.age, b->lte.e_cellid, b->lte.mcc, b->lte.mnc, b->lte.tac,
-                            b->lte.pci, b->lte.earfcn, b->lte.rssi)
+                            i, j, b->h.age, b->cell.id4, b->cell.id1, b->cell.id2, b->cell.id3,
+                            b->cell.id5, b->cell.freq, b->h.rssi)
                     break;
                 case SKY_BEACON_NBIOT:
-                    if (b->nbiot.mcc == SKY_UNKNOWN_ID1 && b->nbiot.mnc == SKY_UNKNOWN_ID2 &&
-                        b->nbiot.e_cellid == SKY_UNKNOWN_ID4)
+                    if (b->cell.id1 == SKY_UNKNOWN_ID1 && b->cell.id2 == SKY_UNKNOWN_ID2 &&
+                        b->cell.id4 == SKY_UNKNOWN_ID4)
                         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                            " Beacon %-2d:%-2d: Type: NB-IoT-NMR, ncid: %u, earfcn: %u, rssi: %d",
-                            i, j, b->nbiot.ncid, b->nbiot.earfcn, b->nbiot.rssi)
+                            " Beacon %-2d:%-2d: Age: %d Type: NB-IoT-NMR, ncid: %u, earfcn: %u, rssi: %d",
+                            i, j, b->h.age, b->cell.id5, b->cell.freq, b->h.rssi)
                     else
                         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                            " Beacon %-2d:%-2d: Type: NB-IoT, mcc: %u, mnc: %u, e_cellid: %u, tac: %u, ncid: %u, earfcn: %u, rssi: %d",
-                            i, j, b->nbiot.mcc, b->nbiot.mnc, b->nbiot.e_cellid, b->nbiot.tac,
-                            b->nbiot.ncid, b->nbiot.earfcn, b->nbiot.rssi)
+                            " Beacon %-2d:%-2d: Age: %d Type: NB-IoT, mcc: %u, mnc: %u, e_cellid: %u, tac: %u, ncid: %u, earfcn: %u, rssi: %d",
+                            i, j, b->h.age, b->cell.id1, b->cell.id2, b->cell.id4, b->cell.id3,
+                            b->cell.id5, b->cell.freq, b->h.rssi)
                     break;
                 case SKY_BEACON_UMTS:
-                    if (b->umts.mcc == SKY_UNKNOWN_ID1 && b->umts.mnc == SKY_UNKNOWN_ID2 &&
-                        b->umts.ucid == SKY_UNKNOWN_ID4)
+                    if (b->cell.id1 == SKY_UNKNOWN_ID1 && b->cell.id2 == SKY_UNKNOWN_ID2 &&
+                        b->cell.id4 == SKY_UNKNOWN_ID4)
                         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                            " Beacon %-2d:%-2d: Type: UMTS-NMR, psc: %u, uarfcn: %u, rssi: %d", i,
-                            j, b->umts.psc, b->umts.uarfcn, b->umts.rssi)
+                            " Beacon %-2d:%-2d: Age: %d Type: UMTS-NMR, psc: %u, uarfcn: %u, rssi: %d",
+                            i, j, b->h.age, b->cell.id5, b->cell.freq, b->h.rssi)
                     else
                         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                            " Beacon %-2d:%-2d: Type: UMTS, lac: %u, ucid: %u, mcc: %u, mnc: %u, psc: %u, uarfcn: %u, rssi: %d",
-                            i, j, b->umts.lac, b->umts.ucid, b->umts.mcc, b->umts.mnc, b->umts.psc,
-                            b->umts.uarfcn, b->umts.rssi)
+                            " Beacon %-2d:%-2d: Age: %d Type: UMTS, lac: %u, ucid: %u, mcc: %u, mnc: %u, psc: %u, uarfcn: %u, rssi: %d",
+                            i, j, b->h.age, b->cell.id3, b->cell.id4, b->cell.id1, b->cell.id2,
+                            b->cell.id5, b->cell.freq, b->h.rssi)
                     break;
                 case SKY_BEACON_NR:
-                    if (b->nr.mcc == SKY_UNKNOWN_ID1 && b->nr.mnc == SKY_UNKNOWN_ID2 &&
-                        b->nr.nci == SKY_UNKNOWN_ID4)
+                    if (b->cell.id1 == SKY_UNKNOWN_ID1 && b->cell.id2 == SKY_UNKNOWN_ID2 &&
+                        b->cell.id4 == SKY_UNKNOWN_ID4)
                         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                            " Beacon %-2d:%-2d: Type: NR-NMR, pci: %u, nrarfcn: %u, rssi: %d", i, j,
-                            b->nr.pci, b->nr.nrarfcn, b->nr.rssi)
+                            " Beacon %-2d:%-2d: Age: %d Type: NR-NMR, pci: %u, cell: %u, rssi: %d",
+                            i, j, b->h.age, b->cell.id5, b->cell.freq, b->h.rssi)
                     else
                         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
-                            " Beacon %-2d:%-2d: Type: NR, mcc: %u, mnc: %u, nci: %llu, tac: %u, pci: %u, nrarfcn: %u, rssi: %d",
-                            i, j, b->nr.mcc, b->nr.mnc, b->nr.nci, b->nr.tac, b->nr.pci,
-                            b->nr.nrarfcn, b->nr.rssi)
+                            " Beacon %-2d:%-2d: Age: %d Type: NR, mcc: %u, mnc: %u, nci: %llu, tac: %u, pci: %u, nrarfcn: %u, rssi: %d",
+                            i, j, b->h.age, b->cell.id1, b->cell.id2, b->cell.id4, b->cell.id3,
+                            b->cell.id5, b->cell.freq, b->h.rssi)
                     break;
                 }
             }
@@ -734,7 +734,7 @@ int64_t get_ap_rssi(Sky_ctx_t *ctx, uint32_t idx)
         // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
         return 0;
     }
-    return ctx->beacon[idx].ap.rssi;
+    return ctx->beacon[idx].h.rssi;
 }
 
 /*! \brief field extraction for dynamic use of Nanopb (AP/is_connected)
@@ -766,9 +766,9 @@ int64_t get_ap_age(Sky_ctx_t *ctx, uint32_t idx)
         // LOGFMT(ctx, SKY_LOG_LEVEL_ERROR, "Bad param")
         return 0;
     }
-    return ctx->beacon[idx].ap.age;
+    return ctx->beacon[idx].h.age;
 }
-
+#if 0
 /*! \brief field extraction for dynamic use of Nanopb (num gsm)
  *
  *  @param ctx workspace buffer
@@ -1387,7 +1387,7 @@ int64_t get_umts_age(Sky_ctx_t *ctx, uint32_t idx)
     }
     return ctx->beacon[get_base_beacons(ctx, SKY_BEACON_UMTS) + idx].umts.age;
 }
-
+#endif
 /*! \brief field extraction for dynamic use of Nanopb (num gnss)
  *
  *  @param ctx workspace buffer
@@ -1588,15 +1588,11 @@ int64_t get_cell_id1(Beacon_t *cell)
     case SKY_BEACON_CDMA:
         return SKY_UNKNOWN_ID1; // ID1 irrelevant for CDMA.
     case SKY_BEACON_GSM:
-        return cell->gsm.mcc;
     case SKY_BEACON_LTE:
-        return cell->lte.mcc;
     case SKY_BEACON_NBIOT:
-        return cell->nbiot.mcc;
     case SKY_BEACON_UMTS:
-        return cell->umts.mcc;
     case SKY_BEACON_NR:
-        return cell->nr.mcc;
+        return cell->cell.id1;
     }
 
     return 0;
@@ -1610,24 +1606,7 @@ int64_t get_cell_id1(Beacon_t *cell)
  */
 int64_t get_cell_id2(Beacon_t *cell)
 {
-    uint16_t type = get_cell_type(cell);
-
-    switch (type) {
-    case SKY_BEACON_CDMA:
-        return cell->cdma.sid;
-    case SKY_BEACON_GSM:
-        return cell->gsm.mnc;
-    case SKY_BEACON_LTE:
-        return cell->lte.mnc;
-    case SKY_BEACON_NBIOT:
-        return cell->nbiot.mnc;
-    case SKY_BEACON_UMTS:
-        return cell->umts.mnc;
-    case SKY_BEACON_NR:
-        return cell->nr.mnc;
-    }
-
-    return 0;
+    return cell->cell.id2;
 }
 
 /*! \brief Get cell id3
@@ -1638,24 +1617,7 @@ int64_t get_cell_id2(Beacon_t *cell)
  */
 int64_t get_cell_id3(Beacon_t *cell)
 {
-    uint16_t type = get_cell_type(cell);
-
-    switch (type) {
-    case SKY_BEACON_CDMA:
-        return cell->cdma.nid;
-    case SKY_BEACON_GSM:
-        return cell->gsm.lac;
-    case SKY_BEACON_LTE:
-        return cell->lte.tac;
-    case SKY_BEACON_NBIOT:
-        return cell->nbiot.tac;
-    case SKY_BEACON_UMTS:
-        return cell->umts.lac;
-    case SKY_BEACON_NR:
-        return cell->nr.tac;
-    }
-
-    return 0;
+    return cell->cell.id3;
 }
 
 /*! \brief Get cell id4
@@ -1666,24 +1628,7 @@ int64_t get_cell_id3(Beacon_t *cell)
  */
 int64_t get_cell_id4(Beacon_t *cell)
 {
-    uint16_t type = get_cell_type(cell);
-
-    switch (type) {
-    case SKY_BEACON_CDMA:
-        return cell->cdma.bsid;
-    case SKY_BEACON_GSM:
-        return cell->gsm.ci;
-    case SKY_BEACON_LTE:
-        return cell->lte.e_cellid;
-    case SKY_BEACON_NBIOT:
-        return cell->nbiot.e_cellid;
-    case SKY_BEACON_UMTS:
-        return cell->umts.ucid;
-    case SKY_BEACON_NR:
-        return cell->nr.nci;
-    }
-
-    return 0;
+    return cell->cell.id4;
 }
 
 /*! \brief Get cell id5
@@ -1702,13 +1647,10 @@ int64_t get_cell_id5(Beacon_t *cell)
     case SKY_BEACON_GSM:
         return SKY_UNKNOWN_ID5; // Reporting ID5 value not supported for GSM
     case SKY_BEACON_LTE:
-        return cell->lte.pci;
     case SKY_BEACON_NBIOT:
-        return cell->nbiot.ncid;
     case SKY_BEACON_UMTS:
-        return cell->umts.psc;
     case SKY_BEACON_NR:
-        return cell->nr.pci;
+        return cell->cell.id5;
     }
 
     return 0;
@@ -1730,13 +1672,10 @@ int64_t get_cell_id6(Beacon_t *cell)
     case SKY_BEACON_GSM:
         return SKY_UNKNOWN_ID6; // Reporting ID6 value not supported for GSM
     case SKY_BEACON_LTE:
-        return cell->lte.earfcn;
     case SKY_BEACON_NBIOT:
-        return cell->nbiot.earfcn;
     case SKY_BEACON_UMTS:
-        return cell->umts.uarfcn;
     case SKY_BEACON_NR:
-        return cell->nr.nrarfcn;
+        return cell->cell.freq;
     }
 
     return 0;
@@ -1761,24 +1700,7 @@ bool get_cell_connected_flag(Sky_ctx_t *ctx, Beacon_t *cell)
  */
 int64_t get_cell_rssi(Beacon_t *cell)
 {
-    uint16_t type = get_cell_type(cell);
-
-    switch (type) {
-    case SKY_BEACON_CDMA:
-        return cell->cdma.rssi;
-    case SKY_BEACON_GSM:
-        return cell->gsm.rssi;
-    case SKY_BEACON_LTE:
-        return cell->lte.rssi;
-    case SKY_BEACON_NBIOT:
-        return cell->nbiot.rssi;
-    case SKY_BEACON_UMTS:
-        return cell->umts.rssi;
-    case SKY_BEACON_NR:
-        return cell->nr.rssi;
-    default:
-        return 0;
-    }
+    return cell->h.rssi;
 }
 
 /*! \brief Return cell age value
@@ -1789,24 +1711,7 @@ int64_t get_cell_rssi(Beacon_t *cell)
  */
 int64_t get_cell_age(Beacon_t *cell)
 {
-    uint16_t type = get_cell_type(cell);
-
-    switch (type) {
-    case SKY_BEACON_CDMA:
-        return cell->cdma.age;
-    case SKY_BEACON_GSM:
-        return cell->gsm.age;
-    case SKY_BEACON_LTE:
-        return cell->lte.age;
-    case SKY_BEACON_NBIOT:
-        return cell->nbiot.age;
-    case SKY_BEACON_UMTS:
-        return cell->umts.age;
-    case SKY_BEACON_NR:
-        return cell->nr.age;
-    default:
-        return 0;
-    }
+    return cell->h.age;
 }
 
 /*! \brief generate random byte sequence

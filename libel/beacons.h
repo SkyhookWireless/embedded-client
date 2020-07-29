@@ -55,65 +55,31 @@ typedef enum {
     SKY_BEACON_MAX, /* add more before this */
 } Sky_beacon_type_t;
 
-/*! \brief Access Point data
- */
-struct ap {
+struct header {
     uint16_t magic; /* Indication that this beacon entry is valid */
     uint16_t type; /* sky_beacon_type_t */
-    uint8_t mac[MAC_SIZE];
-    uint8_t in_cache; /* beacon is in cache */
     uint32_t age;
-    uint32_t freq;
-    int16_t rssi;
-};
-
-// http://wiki.opencellid.org/wiki/API
-struct gsm {
-    uint16_t magic; /* Indication that this beacon entry is valid */
-    uint16_t type; /* sky_beacon_type_t */
-    int64_t ci; // id4
-    uint32_t age;
-    uint16_t mcc; // id1
-    uint16_t mnc; // id2
-    uint16_t lac; // id3
     int16_t rssi; // -255 unkonwn - map it to - 128
 };
 
-// 64-bit aligned due to double
-struct cdma {
-    uint16_t magic; /* Indication that this beacon entry is valid */
-    uint16_t type; /* sky_beacon_type_t */
-    uint32_t age;
-    uint16_t sid; // id2
-    uint16_t nid; // id3
-    int64_t bsid; // id4
-    int16_t rssi;
+/*! \brief Access Point data
+ */
+struct ap {
+    struct header h;
+    uint8_t mac[MAC_SIZE];
+    uint8_t in_cache; /* beacon is in cache */
+    uint32_t freq;
 };
 
-struct umts {
-    uint16_t magic; /* Indication that this beacon entry is valid */
-    uint16_t type; /* sky_beacon_type_t */
-    uint16_t lac; // id3
-    int64_t ucid; // id4
-    uint16_t mcc; // id1
-    uint16_t mnc; // id2
-    int16_t psc; // id5
-    int32_t uarfcn; // id6
-    uint32_t age;
-    int16_t rssi;
-};
-
-struct lte {
-    uint16_t magic; /* Indication that this beacon entry is valid */
-    uint16_t type; /* sky_beacon_type_t */
-    uint32_t age;
-    int64_t e_cellid; // id4
-    uint16_t mcc; // id1
-    uint16_t mnc; // id2
-    uint16_t tac; // id3
-    int16_t pci; // id5
-    int32_t earfcn; // id6
-    int16_t rssi;
+// http://wiki.opencellid.org/wiki/API
+struct cell {
+    struct header h;
+    int16_t id1; // mcc (gsm, umts, lte, nr, nb-iot). -1 if unknown.
+    int16_t id2; // mnc (gsm, umts, lte, nr, nb-iot) or sid (cdma). -1 if unknown.
+    int32_t id3; // lac (gsm, umts) or tac (lte, nr, nb-iot) or nid (cdma). -1 if unknown.
+    int64_t id4; // cell id (gsm, umts, lte, nb-iot, nr), bsid (cdma). -1 if unknown.
+    int16_t id5; // bsic (gsm), psc (umts), pci (lte, nr) or ncid (nb-iot). -1 if unknown.
+    int32_t freq; // arfcn(gsm), uarfcn (umts), earfcn (lte, nb-iot), nrarfcn (nr). -1 if unknown.
 };
 
 // blue tooth
@@ -127,47 +93,11 @@ struct ble {
     int16_t rssi;
 };
 
-struct nbiot {
-    uint16_t magic; /* Indication that this beacon entry is valid */
-    uint16_t type; /* sky_beacon_type_t */
-    uint32_t age;
-    uint16_t mcc; // id1
-    uint16_t mnc; // id2
-    int64_t e_cellid; // id4
-    uint16_t tac; // id3
-    int16_t ncid; // id5
-    int32_t earfcn; // id6
-    int16_t rssi;
-};
-
-struct nr {
-    uint16_t magic; /* Indication that this beacon entry is valid */
-    uint16_t type; /* sky_beacon_type_t */
-    uint32_t age;
-    uint16_t mcc; // id1
-    uint16_t mnc; // id2
-    int64_t nci; // id4
-    uint16_t tac; // id3
-    uint16_t pci; // id5
-    int32_t nrarfcn; // id6
-    int16_t rssi;
-};
-
-struct header {
-    uint16_t magic; /* Indication that this beacon entry is valid */
-    uint16_t type; /* sky_beacon_type_t */
-};
-
 typedef union beacon {
     struct header h;
     struct ap ap;
     struct ble ble;
-    struct cdma cdma;
-    struct gsm gsm;
-    struct lte lte;
-    struct nbiot nbiot;
-    struct umts umts;
-    struct nr nr;
+    struct cell cell;
 } Beacon_t;
 
 typedef struct gps {

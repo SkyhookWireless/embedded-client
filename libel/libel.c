@@ -319,17 +319,17 @@ Sky_status_t sky_add_ap_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uint8_t m
     memset(&b, 0, sizeof(b));
     b.h.magic = BEACON_MAGIC;
     b.h.type = SKY_BEACON_AP;
+    if (rssi > -10 || rssi < -127)
+        rssi = -1;
+    b.h.rssi = rssi;
     memcpy(b.ap.mac, mac, MAC_SIZE);
     /* If beacon has meaningful timestamp */
     /* scan was before sky_new_request and since Mar 1st 2019 */
     if (ctx->header.time > timestamp && timestamp > TIMESTAMP_2019_03_01)
-        b.ap.age = ctx->header.time - timestamp;
+        b.h.age = ctx->header.time - timestamp;
     if (frequency < 2400 || frequency > 6000)
         frequency = 0; /* 0's not sent to server */
-    if (rssi > -10 || rssi < -127)
-        rssi = -1;
     b.ap.freq = frequency;
-    b.ap.rssi = rssi;
     b.ap.in_cache = false;
 
     return add_beacon(ctx, sky_errno, &b, is_connected);
@@ -391,19 +391,19 @@ Sky_status_t sky_add_cell_lte_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uin
     memset(&b, 0, sizeof(b));
     b.h.magic = BEACON_MAGIC;
     b.h.type = SKY_BEACON_LTE;
+    if (rsrp > -40 || rsrp < -140)
+        rsrp = -1;
+    b.h.rssi = rsrp;
     /* If beacon has meaningful timestamp */
     /* scan was before sky_new_request and since Mar 1st 2019 */
     if (ctx->header.time > timestamp && timestamp > TIMESTAMP_2019_03_01)
-        b.lte.age = ctx->header.time - timestamp;
-    if (rsrp > -40 || rsrp < -140)
-        rsrp = -1;
-    b.lte.tac = tac;
-    b.lte.e_cellid = e_cellid;
-    b.lte.mcc = mcc;
-    b.lte.mnc = mnc;
-    b.lte.pci = pci;
-    b.lte.earfcn = earfcn;
-    b.lte.rssi = rsrp;
+        b.h.age = ctx->header.time - timestamp;
+    b.cell.id3 = tac;
+    b.cell.id4 = e_cellid;
+    b.cell.id1 = mcc;
+    b.cell.id2 = mnc;
+    b.cell.id5 = pci;
+    b.cell.freq = earfcn;
 
     return add_beacon(ctx, sky_errno, &b, is_connected);
 }
@@ -474,17 +474,17 @@ Sky_status_t sky_add_cell_gsm_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uin
     memset(&b, 0, sizeof(b));
     b.h.magic = BEACON_MAGIC;
     b.h.type = SKY_BEACON_GSM;
+    if (rssi > -32 || rssi < -128)
+        rssi = -1;
+    b.h.rssi = rssi;
     /* If beacon has meaningful timestamp */
     /* scan was before sky_new_request and since Mar 1st 2019 */
     if (ctx->header.time > timestamp && timestamp > TIMESTAMP_2019_03_01)
-        b.gsm.age = ctx->header.time - timestamp;
-    if (rssi > -32 || rssi < -128)
-        rssi = -1;
-    b.gsm.lac = lac;
-    b.gsm.ci = ci;
-    b.gsm.mcc = mcc;
-    b.gsm.mnc = mnc;
-    b.gsm.rssi = rssi;
+        b.h.age = ctx->header.time - timestamp;
+    b.cell.id3 = lac;
+    b.cell.id4 = ci;
+    b.cell.id1 = mcc;
+    b.cell.id2 = mnc;
 
     return add_beacon(ctx, sky_errno, &b, is_connected);
 }
@@ -545,19 +545,19 @@ Sky_status_t sky_add_cell_umts_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, ui
     memset(&b, 0, sizeof(b));
     b.h.magic = BEACON_MAGIC;
     b.h.type = SKY_BEACON_UMTS;
+    if (rscp > -20 || rscp < -120)
+        rscp = -1;
+    b.h.rssi = rscp;
     /* If beacon has meaningful timestamp */
     /* scan was before sky_new_request and since Mar 1st 2019 */
     if (ctx->header.time > timestamp && timestamp > TIMESTAMP_2019_03_01)
-        b.umts.age = ctx->header.time - timestamp;
-    if (rscp > -20 || rscp < -120)
-        rscp = -1;
-    b.umts.lac = lac;
-    b.umts.ucid = ucid;
-    b.umts.mcc = mcc;
-    b.umts.mnc = mnc;
-    b.umts.psc = psc;
-    b.umts.uarfcn = uarfcn;
-    b.umts.rssi = rscp;
+        b.h.age = ctx->header.time - timestamp;
+    b.cell.id3 = lac;
+    b.cell.id4 = ucid;
+    b.cell.id1 = mcc;
+    b.cell.id2 = mnc;
+    b.cell.id5 = psc;
+    b.cell.freq = uarfcn;
 
     return add_beacon(ctx, sky_errno, &b, is_connected);
 }
@@ -618,16 +618,16 @@ Sky_status_t sky_add_cell_cdma_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, ui
     memset(&b, 0, sizeof(b));
     b.h.magic = BEACON_MAGIC;
     b.h.type = SKY_BEACON_CDMA;
+    if (rssi > -49 || rssi < -140)
+        rssi = -1;
+    b.h.rssi = rssi;
     /* If beacon has meaningful timestamp */
     /* scan was before sky_new_request and since Mar 1st 2019 */
     if (ctx->header.time > timestamp && timestamp > TIMESTAMP_2019_03_01)
-        b.cdma.age = ctx->header.time - timestamp;
-    if (rssi > -49 || rssi < -140)
-        rssi = -1;
-    b.cdma.sid = sid;
-    b.cdma.nid = nid;
-    b.cdma.bsid = bsid;
-    b.cdma.rssi = rssi;
+        b.h.age = ctx->header.time - timestamp;
+    b.cell.id2 = sid;
+    b.cell.id3 = nid;
+    b.cell.id4 = bsid;
 
     return add_beacon(ctx, sky_errno, &b, is_connected);
 }
@@ -687,19 +687,19 @@ Sky_status_t sky_add_cell_nb_iot_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, 
     memset(&b, 0, sizeof(b));
     b.h.magic = BEACON_MAGIC;
     b.h.type = SKY_BEACON_NBIOT;
+    if (nrsrp > -44 || nrsrp < -156)
+        nrsrp = -1;
+    b.h.rssi = nrsrp;
     /* If beacon has meaningful timestamp */
     /* scan was before sky_new_request and since Mar 1st 2019 */
     if (ctx->header.time > timestamp && timestamp > TIMESTAMP_2019_03_01)
-        b.nbiot.age = ctx->header.time - timestamp;
-    if (nrsrp > -44 || nrsrp < -156)
-        nrsrp = -1;
-    b.nbiot.mcc = mcc;
-    b.nbiot.mnc = mnc;
-    b.nbiot.e_cellid = e_cellid;
-    b.nbiot.tac = tac;
-    b.nbiot.ncid = ncid;
-    b.nbiot.earfcn = earfcn;
-    b.nbiot.rssi = nrsrp;
+        b.h.age = ctx->header.time - timestamp;
+    b.cell.id1 = mcc;
+    b.cell.id2 = mnc;
+    b.cell.id4 = e_cellid;
+    b.cell.id3 = tac;
+    b.cell.id5 = ncid;
+    b.cell.freq = earfcn;
 
     return add_beacon(ctx, sky_errno, &b, is_connected);
 }
@@ -783,16 +783,16 @@ Sky_status_t sky_add_cell_nr_beacon(Sky_ctx_t *ctx, Sky_errno_t *sky_errno, uint
     /* If beacon has meaningful timestamp */
     /* scan was before sky_new_request and since Mar 1st 2019 */
     if (ctx->header.time > timestamp && timestamp > TIMESTAMP_2019_03_01)
-        b.nbiot.age = ctx->header.time - timestamp;
+        b.h.age = ctx->header.time - timestamp;
     if (csi_rsrp > -40 || csi_rsrp < -140)
         csi_rsrp = -1;
-    b.nr.mcc = mcc;
-    b.nr.mnc = mnc;
-    b.nr.nci = nci;
-    b.nr.tac = tac;
-    b.nr.pci = pci;
-    b.nr.nrarfcn = nrarfcn;
-    b.nr.rssi = csi_rsrp;
+    b.h.rssi = csi_rsrp;
+    b.cell.id1 = mcc;
+    b.cell.id2 = mnc;
+    b.cell.id4 = nci;
+    b.cell.id3 = tac;
+    b.cell.id5 = pci;
+    b.cell.freq = nrarfcn;
 
     return add_beacon(ctx, sky_errno, &b, is_connected);
 }
