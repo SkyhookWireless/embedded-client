@@ -304,12 +304,13 @@ int main(int ac, char **av)
 
     for (i = 0; i < 3; i++) {
         if (sky_add_cell_nb_iot_beacon(ctx, &sky_errno, b[i].nbiot.mcc, b[i].nbiot.mnc,
-                b[i].nbiot.e_cellid, b[i].nbiot.tac, timestamp, b[i].nbiot.rssi, 1)) {
+                b[i].nbiot.e_cellid, b[i].nbiot.tac, SKY_UNKNOWN_ID5, SKY_UNKNOWN_ID6, timestamp,
+                b[i].nbiot.rssi, 1)) {
             printf("sky_add_nbiot_beacon sky_errno contains '%s'\n", sky_perror(sky_errno));
         } else {
             printf(
-                "Added Test Beacon % 2d: Type: %d, mcc: %d, mnc: %d, e_cellid: %d, tac: %d, rssi: %d\n",
-                i, b[i].nbiot.type, b[i].nbiot.mcc, b[i].nbiot.mnc, b[i].nbiot.e_cellid,
+                "Added Test Beacon % 2d: Type: %d, mcc: %d, mnc: %d, e_cellid: %lld, tac: %d, rssi: %d\n",
+                i, b[i].nbiot.type, b[i].nbiot.mcc, b[i].nbiot.mnc, (long long)b[i].nbiot.e_cellid,
                 b[i].nbiot.tac, b[i].nbiot.rssi);
         }
     }
@@ -330,8 +331,8 @@ int main(int ac, char **av)
             printf("sky_add_gsm_beacon sky_errno contains '%s'\n", sky_perror(sky_errno));
         } else {
             printf(
-                "Added Test Beacon % 2d: Type: %d, lac: %d, ui: %d, mcc: %d, mnc: %d, rssi: %d\n",
-                i, b[i].gsm.type, b[i].gsm.lac, b[i].gsm.ci, b[i].gsm.mcc, b[i].gsm.mnc,
+                "Added Test Beacon % 2d: Type: %d, lac: %d, ci: %lld, mcc: %d, mnc: %d, rssi: %d\n",
+                i, b[i].gsm.type, b[i].gsm.lac, (long long)b[i].gsm.ci, b[i].gsm.mcc, b[i].gsm.mnc,
                 b[i].gsm.rssi);
         }
     }
