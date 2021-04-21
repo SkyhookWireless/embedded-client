@@ -207,7 +207,7 @@ static Sky_status_t match(Sky_ctx_t *ctx, int *idx)
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache: %d: Score based on cell beacons", i);
             threshold = 100.0; /* 100% match */
             score = 0.0;
-            for (int j = NUM_APS(ctx) - 1; j < NUM_BEACONS(ctx); j++) {
+            for (int j = NUM_APS(ctx); j < NUM_BEACONS(ctx); j++) {
                 if (beacon_in_cacheline(ctx, &ctx->beacon[j], &ctx->state->cacheline[i], NULL)) {
 #ifdef VERBOSE_DEBUG
                     LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG,
