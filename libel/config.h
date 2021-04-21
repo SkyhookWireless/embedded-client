@@ -37,13 +37,13 @@
 /*! \brief The maximum number of beacons passed to the server in a request
  */
 #ifndef TOTAL_BEACONS
-#define TOTAL_BEACONS 20
+#define TOTAL_BEACONS 28
 #endif
 
 /*! \brief The maximum number of AP beacons passed to the server in a request
  */
 #ifndef MAX_AP_BEACONS
-#define MAX_AP_BEACONS 15
+#define MAX_AP_BEACONS 20
 #endif
 
 /*! \brief The maximum number of child APs in a Virtual Group. No more than 16 allowed
