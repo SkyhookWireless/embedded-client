@@ -205,7 +205,7 @@ static Sky_status_t match(Sky_ctx_t *ctx, int *idx)
         } else {
             /* count number of matching cells */
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "Cache: %d: Score based on cell beacons", i);
-            threshold = 100.0; /* 100% match */
+            threshold = CONFIG(ctx->state, cache_match_all_threshold);
             score = 0.0;
             for (int j = NUM_APS(ctx); j < NUM_BEACONS(ctx); j++) {
                 if (beacon_in_cacheline(ctx, &ctx->beacon[j], &ctx->state->cacheline[i], NULL)) {
@@ -217,8 +217,10 @@ static Sky_status_t match(Sky_ctx_t *ctx, int *idx)
                     score = score + 1.0;
                 }
             }
-            /* cell score = number of matching cells / cells in workspace */
-            ratio = (float)score / NUM_BEACONS(ctx);
+            /* score = number of matching cells */
+            /* ratio is 1.0 when score == Number of cells */
+            /* ratio if 0.0 when score is less than Number of cells */
+            ratio = (float)score == NUM_CELLS(ctx) ? 1.0 : 0.0;
             LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "cache: %d: score %d (%d/%d) vs %d", i,
                 (int)round(ratio * 100), score, NUM_BEACONS(ctx), threshold);
             result = true;
@@ -237,7 +239,7 @@ static Sky_status_t match(Sky_ctx_t *ctx, int *idx)
             bestratio = ratio;
             bestthresh = threshold;
         }
-        if (ratio * 100 >= threshold)
+        if (ratio * 100 > threshold)
             break;
     }
     if (err) {
@@ -248,7 +250,7 @@ static Sky_status_t match(Sky_ctx_t *ctx, int *idx)
     /* make a note of the best match used by add_to_cache */
     ctx->save_to = bestput;
 
-    if (result && bestratio * 100 >= bestthresh) {
+    if (result && bestratio * 100 > bestthresh) {
         LOGFMT(ctx, SKY_LOG_LEVEL_DEBUG, "location in cache, pick cache %d of %d score %d (vs %d)",
             bestc, CACHE_SIZE, (int)round(bestratio * 100), bestthresh);
         *idx = bestc;
