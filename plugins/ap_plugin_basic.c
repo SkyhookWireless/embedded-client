@@ -62,16 +62,10 @@ static Sky_status_t equal(Sky_ctx_t *ctx, Beacon_t *a, Beacon_t *b, Sky_beacon_p
         return SKY_ERROR;
 
     /* test two APs for equivalence */
-    switch (a->h.type) {
-    case SKY_BEACON_AP:
-        if (memcmp(a->ap.mac, b->ap.mac, MAC_SIZE) == 0) {
-            if (prop != NULL && b->ap.property.in_cache)
-                prop->in_cache = true;
-            return SKY_SUCCESS;
-        }
-        break;
-    default:
-        break;
+    if (memcmp(a->ap.mac, b->ap.mac, MAC_SIZE) == 0) {
+        if (prop != NULL && b->ap.property.in_cache)
+            prop->in_cache = true;
+        return SKY_SUCCESS;
     }
     return SKY_FAILURE;
 }
